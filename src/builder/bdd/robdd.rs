@@ -21,6 +21,21 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<
         self.order.borrow().lt(a, b)
     }
 
+    fn has_variable(&self, bdd: BddPtr<'a>, var: VarLabel) -> bool {
+        match bdd {
+            BddPtr::PtrTrue | BddPtr::PtrFalse => false,
+            BddPtr::Compl(node) | BddPtr::Reg(node) => {
+                if node.var == var {
+                    true
+                } else if self.less_than(var, node.var) {
+                    false // If var should come before node.var in the order, it won't appear below
+                } else {
+                    self.has_variable(node.low, var) || self.has_variable(node.high, var)
+                }
+            }
+        }
+    }
+
     /// Normalizes and fetches a node from the store
     fn get_or_insert(&'a self, bdd: BddNode<'a>) -> BddPtr<'a> {
         unsafe {

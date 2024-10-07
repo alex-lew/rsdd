@@ -1,6 +1,7 @@
 use std::os::raw::c_char;
 use std::{collections::HashMap, ffi::CStr};
 
+use crate::builder::bdd::BddBuilder;
 use crate::repr::DDNNFPtr;
 use crate::util::semirings::{RealSemiring, Semiring};
 use crate::{
@@ -146,6 +147,19 @@ pub unsafe extern "C" fn bdd_ite(
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_condition(
+    builder: *mut RsddBddBuilder,
+    bdd: *mut BddPtr<'static>,
+    label: u64,
+    value: bool,
+) -> *mut BddPtr<'static> {
+    let builder = robdd_builder_from_ptr(builder);
+    let conditioned = builder.condition(*bdd, VarLabel::new(label), value);
+    Box::into_raw(Box::new(conditioned))
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_and(
     builder: *mut RsddBddBuilder,
     left: *mut BddPtr<'static>,
@@ -275,6 +289,30 @@ pub unsafe extern "C" fn bdd_wmc(
 pub unsafe extern "C" fn new_wmc_params_f64() -> *mut WmcParams<RealSemiring> {
     Box::into_raw(Box::new(WmcParams::new(HashMap::from([]))))
 }
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_compose(
+    builder: *mut RsddBddBuilder,
+    f: *mut BddPtr<'static>,
+    var: u64,
+    g: *mut BddPtr<'static>,
+) -> *mut BddPtr<'static> {
+    let builder = robdd_builder_from_ptr(builder);
+    let result = builder.compose(*f, VarLabel::new(var), *g);
+    Box::into_raw(Box::new(result))
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_exists(
+    builder: *mut RsddBddBuilder,
+    f: *mut BddPtr<'static>,
+    var: u64,
+) -> *mut BddPtr<'static> {
+    let builder = robdd_builder_from_ptr(builder);
+    let result = builder.exists(*f, VarLabel::new(var));
+    Box::into_raw(Box::new(result))
+}
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
@@ -311,4 +349,33 @@ pub unsafe extern "C" fn weight_f64_lo(w: WeightF64) -> f64 {
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn weight_f64_hi(w: WeightF64) -> f64 {
     w.1
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_size(bdd: *mut BddPtr<'static>) -> usize {
+    (*bdd).count_nodes()
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_iff(
+    builder: *mut RsddBddBuilder,
+    left: *mut BddPtr<'static>,
+    right: *mut BddPtr<'static>,
+) -> *mut BddPtr<'static> {
+    let builder = robdd_builder_from_ptr(builder);
+    let iff = builder.iff(*left, *right);
+    Box::into_raw(Box::new(iff))
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_has_variable(
+    builder: *mut RsddBddBuilder,
+    bdd: *mut BddPtr<'static>,
+    var: u64,
+) -> bool {
+    let builder = robdd_builder_from_ptr(builder);
+    builder.has_variable(*bdd, VarLabel::new(var))
 }

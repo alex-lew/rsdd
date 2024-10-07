@@ -6,6 +6,7 @@ use std::{cmp::Ordering, collections::BinaryHeap};
 
 pub trait BddBuilder<'a>: BottomUpBuilder<'a, BddPtr<'a>> {
     fn less_than(&self, a: VarLabel, b: VarLabel) -> bool;
+    fn has_variable(&self, bdd: BddPtr<'a>, var: VarLabel) -> bool;
 
     fn get_or_insert(&'a self, bdd: BddNode<'a>) -> BddPtr<'a>;
 
