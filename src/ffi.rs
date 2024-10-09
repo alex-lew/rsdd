@@ -10,6 +10,8 @@ use crate::{
     repr::{BddPtr, Cnf, VarLabel, VarOrder, WmcParams},
     util::semirings::FiniteField,
 };
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 
 #[no_mangle]
 pub extern "C" fn var_order_linear(num_vars: usize) -> *const VarOrder {
@@ -378,4 +380,37 @@ pub unsafe extern "C" fn bdd_has_variable(
 ) -> bool {
     let builder = robdd_builder_from_ptr(builder);
     builder.has_variable(*bdd, VarLabel::new(var))
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_hash(bdd: *mut BddPtr<'static>) -> u64 {
+    let bdd = *bdd;
+
+    let mut hasher = DefaultHasher::new();
+    bdd.hash(&mut hasher);
+    hasher.finish()
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_bdd(bdd: *mut BddPtr<'static>) {
+    if !bdd.is_null() {
+        drop(Box::from_raw(bdd));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_bdd_manager(manager: *mut RsddBddBuilder) {
+    if !manager.is_null() {
+        drop(Box::from_raw(
+            manager.cast::<RobddBuilder<AllIteTable<BddPtr>>>(),
+        ));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_wmc_params(params: *mut WmcParams<RealSemiring>) {
+    if !params.is_null() {
+        drop(Box::from_raw(params));
+    }
 }
