@@ -433,6 +433,59 @@ impl<'a> BddPtr<'a> {
             }
         }
     }
+
+    pub fn bdd_json(&self) -> String {
+        debug_assert!(self.is_scratch_cleared());
+
+        // vector of (label, lo_is_neg, lo_idx, hi_is_neg, hi_idx) tuples each representing a node in the version
+        // of the BDD that has all Reg() pointers
+        // 0 is False, 1 is True, 2+ are indexes into the nodes vector.
+        let mut nodes: Vec<(u64, (bool, usize), (bool, usize))> = Vec::new();
+        nodes.push((u64::MAX, (false, usize::MAX), (false, usize::MAX))); // false sentinel
+        nodes.push((u64::MAX, (false, usize::MAX), (false, usize::MAX))); // true sentinel
+
+        // Takes a pointer and returns the idx of the pointer in the nodes vector and whether it is complemented
+        fn build_node_index(ptr: BddPtr, nodes: &mut Vec<(u64, (bool, usize), (bool, usize))>) -> (bool, usize) {
+            match ptr {
+                BddPtr::PtrFalse => (false, 0),
+                BddPtr::PtrTrue => (false, 1),
+                BddPtr::Reg(_) | BddPtr::Compl(_) =>
+                {
+                    match ptr.scratch::<usize>() {
+                        Some(idx) => (ptr.is_neg(), idx),
+                        None => {
+                            // This is our first time seeing this node. We build and cache the raw version
+                            // of this node regardless of whether it is complemented or not because this
+                            // cache is for the underlying node not the pointer.
+                            let (low_is_neg, low_idx) = build_node_index(ptr.low_raw(), nodes);
+                            let (high_is_neg, high_idx) = build_node_index(ptr.high_raw(), nodes);
+                            let label = ptr.var().unwrap().value();
+                            nodes.push((label, (low_is_neg, low_idx), (high_is_neg, high_idx)));
+                            let idx = nodes.len() - 1;
+                            ptr.set_scratch::<usize>(idx);
+                            (ptr.is_neg(), idx)
+                        }
+                    }
+                }
+            }
+        }
+        let (root_is_neg, root_idx) = build_node_index(*self, &mut nodes);
+        self.clear_scratch();
+
+        // build json output
+        let mut json = String::new();
+        json.push_str(&format!("{{\"root\": [{}, {}],\n", root_is_neg, root_idx));
+        json.push_str("\"nodes\": [\n    ");
+        for (i, (label, (low_is_neg, low_idx), (high_is_neg, high_idx))) in nodes.iter().enumerate() {
+            json.push_str(&format!("[{}, {}, {}, {}, {}]", label, low_is_neg, low_idx, high_is_neg, high_idx));
+            if i != nodes.len() - 1 {
+                json.push_str(",\n    ");
+            }
+        }
+        json.push_str("]");
+        json.push_str("\n}");
+        return json;
+    }
     #[inline]
     pub fn print_bdd(&self) -> String {
         self.print_bdd_lbl(&HashMap::new())

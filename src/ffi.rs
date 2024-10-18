@@ -272,6 +272,15 @@ pub unsafe extern "C" fn print_bdd(bdd: *mut BddPtr<'static>) -> *const c_char {
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_json(bdd: *mut BddPtr<'static>) -> *const c_char {
+    let s = std::ffi::CString::new((*bdd).bdd_json()).unwrap();
+    let p = s.as_ptr();
+    std::mem::forget(s);
+    p
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_num_recursive_calls(builder: *mut RsddBddBuilder) -> usize {
     let builder = robdd_builder_from_ptr(builder);
     builder.num_recursive_calls()
