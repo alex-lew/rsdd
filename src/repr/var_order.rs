@@ -251,6 +251,19 @@ impl VarOrder {
         VarLabel::new(pos as u64)
     }
 
+    pub fn insert_var_at_position(&mut self, position: usize) -> VarLabel {
+        let new_var = self.var_to_pos.len();
+        self.var_to_pos.push(position);
+        self.pos_to_var.insert(position, new_var);
+
+        // Shift all variables after the insertion point
+        for i in (position + 1)..self.pos_to_var.len() {
+            self.var_to_pos[self.pos_to_var[i]] = i;
+        }
+
+        VarLabel::new(new_var as u64)
+    }
+
     /// Returns an iterator of all variables between [low_level..high_level)
     pub fn between_iter(
         &self,

@@ -133,6 +133,43 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> RobddBuilder<'a, T> {
         self.order.borrow_mut().new_last()
     }
 
+    /// Generate a new variable label and insert it at the specified position in the current order.
+    /// Returns the newly generated label.
+    ///
+    /// # Arguments
+    ///
+    /// * `position` - The position at which to insert the new variable in the order.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the position is out of bounds for the current order.
+    #[inline]
+    pub fn new_label_at_position(&self, position: usize) -> VarLabel {
+        self.order.borrow_mut().insert_var_at_position(position)
+    }
+
+    /// Generate a new pointer and insert it at the specified position in the current order.
+    /// Returns the newly generated label and the corresponding BDD pointer.
+    ///
+    /// # Arguments
+    ///
+    /// * `position` - The position at which to insert the new variable in the order.
+    /// * `polarity` - The polarity of the new variable (true for positive, false for negative).
+    ///
+    /// # Panics
+    ///
+    /// Panics if the position is out of bounds for the current order.
+    #[inline]
+    pub fn new_var_at_position(
+        &'a self,
+        position: usize,
+        polarity: bool,
+    ) -> (VarLabel, BddPtr<'a>) {
+        let label = self.new_label_at_position(position);
+        let ptr = self.var(label, polarity);
+        (label, ptr)
+    }
+
     /// Generate a new pointer which was not in the original order. Uses
     /// `new_label` to produce a new label at the end of the current order, then
     /// uses `var` to create a pointer in the manager. Returns the output of both.

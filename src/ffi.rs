@@ -136,6 +136,18 @@ pub unsafe extern "C" fn bdd_new_var(
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_new_var_at_position(
+    builder: *mut RsddBddBuilder,
+    position: usize,
+    polarity: bool,
+) -> *mut BddPtr<'static> {
+    let builder = robdd_builder_from_ptr(builder);
+    let (_, ptr) = builder.new_var_at_position(position, polarity);
+    Box::into_raw(Box::new(ptr))
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_ite(
     builder: *mut RsddBddBuilder,
     f: *mut BddPtr<'static>,
