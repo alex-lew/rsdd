@@ -1,3 +1,5 @@
+use rand::{rngs::ThreadRng, Rng};
+
 use crate::{
     backing_store::{BackedRobinhoodTable, UniqueTable},
     builder::{
@@ -5,7 +7,8 @@ use crate::{
         cache::{Ite, IteTable},
         BottomUpBuilder,
     },
-    repr::{BddNode, BddPtr, DDNNFPtr, PartialModel, VarLabel, VarOrder},
+    repr::{BddNode, BddPtr, DDNNFPtr, PartialModel, VarLabel, VarOrder, WmcParams},
+    util::semirings::RealSemiring,
 };
 use std::cell::RefCell;
 
@@ -15,6 +18,8 @@ pub struct RobddBuilder<'a, T: IteTable<'a, BddPtr<'a>> + Default> {
     stats: RefCell<BddBuilderStats>,
     order: RefCell<VarOrder>,
 }
+
+type SampleCache = (Option<f64>, Option<f64>);
 
 impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<'a, T> {
     fn less_than(&self, a: VarLabel, b: VarLabel) -> bool {
@@ -190,6 +195,110 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> RobddBuilder<'a, T> {
     #[inline]
     pub fn new_neg(&'a self) -> (VarLabel, BddPtr<'a>) {
         self.new_var(false)
+    }
+
+    pub fn weighted_sample(&'a self, ptr: BddPtr<'a>, wmc: &WmcParams<RealSemiring>) -> BddPtr<'a> {
+        let mut rng = rand::thread_rng();
+
+        fn bottomup_pass_h(ptr: BddPtr, wmc: &WmcParams<RealSemiring>) -> f64 {
+            match ptr {
+                BddPtr::PtrTrue => 1.0,
+                BddPtr::PtrFalse => 0.0,
+                BddPtr::Compl(node) | BddPtr::Reg(node) => {
+                    // inside the cache, store a (compl, non_compl) pair corresponding to the
+                    // complemented and uncomplemented pass over this node
+
+                    // helper performs actual fold-and-cache work
+                    let bottomup_helper = |cached| {
+                        let (l, h) = if ptr.is_neg() {
+                            (ptr.low_raw().neg(), ptr.high_raw().neg())
+                        } else {
+                            (ptr.low_raw(), ptr.high_raw())
+                        };
+
+                        let low_v = bottomup_pass_h(l, wmc);
+                        let high_v = bottomup_pass_h(h, wmc);
+                        let top = node.var;
+
+                        let and_low = wmc.var_weight(top).0 .0 * low_v;
+                        let and_high = wmc.var_weight(top).1 .0 * high_v;
+
+                        let or_v = and_low + and_high;
+
+                        // cache and return or_v
+                        if ptr.is_neg() {
+                            ptr.set_scratch::<SampleCache>((Some(or_v), cached));
+                        } else {
+                            ptr.set_scratch::<SampleCache>((cached, Some(or_v)));
+                        }
+                        or_v
+                    };
+
+                    match ptr.scratch::<SampleCache>() {
+                        // first, check if cached; explicit arms here for clarity
+                        Some((Some(l), Some(h))) => {
+                            if ptr.is_neg() {
+                                l
+                            } else {
+                                h
+                            }
+                        }
+                        Some((Some(v), None)) if ptr.is_neg() => v,
+                        Some((None, Some(v))) if !ptr.is_neg() => v,
+                        // no cached value found, compute it
+                        Some((None, cached)) | Some((cached, None)) => bottomup_helper(cached),
+                        None => bottomup_helper(None),
+                    }
+                }
+            }
+        }
+
+        // let r = bottomup_pass_h(ptr, wmc);
+
+        fn sample_path<'b, T: IteTable<'b, BddPtr<'b>> + Default>(
+            builder: &'b RobddBuilder<'b, T>,
+            ptr: BddPtr<'b>,
+            wmc: &WmcParams<RealSemiring>,
+            rng: &mut ThreadRng,
+        ) -> BddPtr<'b> {
+            match ptr {
+                BddPtr::PtrTrue => ptr,
+                BddPtr::PtrFalse => panic!("sample_path called on false!"),
+                BddPtr::Compl(node) | BddPtr::Reg(node) => {
+                    let (l, h) = if ptr.is_neg() {
+                        (ptr.low_raw().neg(), ptr.high_raw().neg())
+                    } else {
+                        (ptr.low_raw(), ptr.high_raw())
+                    };
+
+                    let low_v = bottomup_pass_h(l, wmc);
+                    let high_v = bottomup_pass_h(h, wmc);
+                    let top = node.var;
+
+                    let and_low = wmc.var_weight(top).0 .0 * low_v;
+                    let and_high = wmc.var_weight(top).1 .0 * high_v;
+
+                    // Choose between low and high based on and_low and and_high
+                    // Generate a random float between 0 and 1, and then look at
+                    // whether it is less than and_low / (and_low + and_high).
+                    let total_weight = and_low + and_high;
+                    let rand_val = rng.gen_range(0.0..total_weight);
+                    if rand_val < and_low {
+                        let low_child = sample_path(builder, l, wmc, rng);
+                        let new_node = BddNode::new(node.var, low_child, BddPtr::PtrFalse);
+                        return builder.get_or_insert(new_node);
+                    } else {
+                        let high_child = sample_path(builder, h, wmc, rng);
+                        let new_node = BddNode::new(node.var, BddPtr::PtrFalse, high_child);
+                        return builder.get_or_insert(new_node);
+                    }
+                }
+            }
+        }
+
+        let sample = sample_path(self, ptr, wmc, &mut rng);
+        ptr.clear_scratch();
+        sample
     }
 
     /// Get the current variable order

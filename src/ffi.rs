@@ -28,6 +28,26 @@ pub unsafe extern "C" fn cnf_from_dimacs(dimacs_str: *const c_char) -> *const Cn
     ))))
 }
 
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn robdd_weighted_sample(
+    builder: *mut RsddBddBuilder,
+    bdd: *mut BddPtr<'static>,
+    wmc_params: *mut WmcParams<RealSemiring>,
+) -> *mut BddPtr<'static> {
+    if bdd.is_null() || wmc_params.is_null() {
+        eprintln!("Fatal error, got NULL pointer for `bdd` or `wmc_params`");
+        std::process::abort();
+    }
+
+    let builder = robdd_builder_from_ptr(builder);
+    let bdd = *bdd;
+    let wmc_params = &*wmc_params;
+
+    let sample = builder.weighted_sample(bdd, wmc_params);
+    Box::into_raw(Box::new(sample))
+}
+
 // directly inspired by https://users.rust-lang.org/t/how-to-deal-with-lifetime-when-need-to-expose-through-ffi/39583
 // and the follow-up at https://users.rust-lang.org/t/can-someone-explain-why-this-is-working/82324/6
 #[repr(C)]

@@ -445,12 +445,14 @@ impl<'a> BddPtr<'a> {
         nodes.push((u64::MAX, (false, usize::MAX), (false, usize::MAX))); // true sentinel
 
         // Takes a pointer and returns the idx of the pointer in the nodes vector and whether it is complemented
-        fn build_node_index(ptr: BddPtr, nodes: &mut Vec<(u64, (bool, usize), (bool, usize))>) -> (bool, usize) {
+        fn build_node_index(
+            ptr: BddPtr,
+            nodes: &mut Vec<(u64, (bool, usize), (bool, usize))>,
+        ) -> (bool, usize) {
             match ptr {
                 BddPtr::PtrFalse => (false, 0),
                 BddPtr::PtrTrue => (false, 1),
-                BddPtr::Reg(_) | BddPtr::Compl(_) =>
-                {
+                BddPtr::Reg(_) | BddPtr::Compl(_) => {
                     match ptr.scratch::<usize>() {
                         Some(idx) => (ptr.is_neg(), idx),
                         None => {
@@ -476,8 +478,12 @@ impl<'a> BddPtr<'a> {
         let mut json = String::new();
         json.push_str(&format!("{{\"root\": [{}, {}],\n", root_is_neg, root_idx));
         json.push_str("\"nodes\": [\n    ");
-        for (i, (label, (low_is_neg, low_idx), (high_is_neg, high_idx))) in nodes.iter().enumerate() {
-            json.push_str(&format!("[{}, {}, {}, {}, {}]", label, low_is_neg, low_idx, high_is_neg, high_idx));
+        for (i, (label, (low_is_neg, low_idx), (high_is_neg, high_idx))) in nodes.iter().enumerate()
+        {
+            json.push_str(&format!(
+                "[{}, {}, {}, {}, {}]",
+                label, low_is_neg, low_idx, high_is_neg, high_idx
+            ));
             if i != nodes.len() - 1 {
                 json.push_str(",\n    ");
             }
