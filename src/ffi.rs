@@ -48,6 +48,21 @@ pub unsafe extern "C" fn robdd_weighted_sample(
     Box::into_raw(Box::new(sample))
 }
 
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn robdd_top_k_paths(
+    builder: *mut RsddBddBuilder,
+    bdd: *mut BddPtr<'static>,
+    k: usize,
+    wmc: *mut WmcParams<RealSemiring>,
+) -> *mut BddPtr<'static> {
+    let builder = robdd_builder_from_ptr(builder);
+    let bdd = *bdd;
+    let wmc = &*wmc;
+    let sample = builder.top_k_paths(bdd, k, wmc);
+    Box::into_raw(Box::new(sample))
+}
+
 // directly inspired by https://users.rust-lang.org/t/how-to-deal-with-lifetime-when-need-to-expose-through-ffi/39583
 // and the follow-up at https://users.rust-lang.org/t/can-someone-explain-why-this-is-working/82324/6
 #[repr(C)]

@@ -1,3 +1,4 @@
+use ordered_float::OrderedFloat;
 use rand::{rngs::ThreadRng, Rng};
 
 use crate::{
@@ -299,6 +300,157 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> RobddBuilder<'a, T> {
         let sample = sample_path(self, ptr, wmc, &mut rng);
         ptr.clear_scratch();
         sample
+    }
+
+    /// Compute the top K accepting paths through the BDD and return a new BDD containing only those paths
+    pub fn top_k_paths(
+        &'a self,
+        ptr: BddPtr<'a>,
+        k: usize,
+        wmc: &WmcParams<RealSemiring>,
+    ) -> BddPtr<'a> {
+        #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+        struct Path {
+            weight: OrderedFloat<f64>,
+            decisions: Vec<(VarLabel, bool)>,
+        }
+
+        type TopKCache = (Option<Vec<Path>>, Option<Vec<Path>>);
+
+        // Bottom-up pass to compute top K paths
+        fn bottom_up_top_k<'b, T: IteTable<'b, BddPtr<'b>> + Default>(
+            builder: &'b RobddBuilder<'b, T>,
+            ptr: BddPtr<'b>,
+            k: usize,
+            wmc: &WmcParams<RealSemiring>,
+        ) -> Vec<Path> {
+            match ptr {
+                BddPtr::PtrTrue => vec![Path {
+                    weight: OrderedFloat(1.0),
+                    decisions: vec![],
+                }],
+                BddPtr::PtrFalse => vec![],
+                BddPtr::Compl(node) | BddPtr::Reg(node) => {
+                    let bottomup_helper = |cached: Option<Vec<Path>>| {
+                        let (l, h) = if ptr.is_neg() {
+                            (ptr.low_raw().neg(), ptr.high_raw().neg())
+                        } else {
+                            (ptr.low_raw(), ptr.high_raw())
+                        };
+
+                        let low_paths = bottom_up_top_k(builder, l, k, wmc);
+                        let high_paths = bottom_up_top_k(builder, h, k, wmc);
+
+                        let low_weight = wmc.var_weight(node.var).0 .0;
+                        let high_weight = wmc.var_weight(node.var).1 .0;
+
+                        let mut true_paths = Vec::new();
+
+                        true_paths.extend(low_paths.into_iter().map(|mut p| {
+                            p.weight *= OrderedFloat(low_weight);
+                            p.decisions.insert(0, (node.var, false));
+                            p
+                        }));
+
+                        true_paths.extend(high_paths.into_iter().map(|mut p| {
+                            p.weight *= OrderedFloat(high_weight);
+                            p.decisions.insert(0, (node.var, true));
+                            p
+                        }));
+
+                        true_paths.sort_by(|a, b| b.weight.cmp(&a.weight));
+                        true_paths.truncate(k);
+
+                        // println!("Top-k paths for {:?}: {:?}", node.var, true_paths);
+
+                        if ptr.is_neg() {
+                            ptr.set_scratch::<TopKCache>((Some(true_paths.clone()), cached));
+                        } else {
+                            ptr.set_scratch::<TopKCache>((cached, Some(true_paths.clone())));
+                        }
+                        true_paths
+                    };
+
+                    match ptr.scratch::<TopKCache>() {
+                        Some((Some(l), Some(h))) => {
+                            if ptr.is_neg() {
+                                l
+                            } else {
+                                h
+                            }
+                        }
+                        Some((Some(v), None)) if ptr.is_neg() => v,
+                        Some((None, Some(v))) if !ptr.is_neg() => v,
+                        Some((None, cached)) | Some((cached, None)) => bottomup_helper(cached),
+                        None => bottomup_helper(None),
+                    }
+                }
+            }
+        }
+
+        // Top-down pass to construct new BDD with top K paths
+        fn construct_top_k_bdd<'b, T: IteTable<'b, BddPtr<'b>> + Default>(
+            builder: &'b RobddBuilder<'b, T>,
+            paths: &[Path],
+            order: &VarOrder,
+        ) -> BddPtr<'b> {
+            if paths.is_empty() {
+                return BddPtr::PtrFalse;
+            }
+
+            if paths.iter().all(|p| p.decisions.is_empty()) {
+                return BddPtr::PtrTrue;
+            }
+
+            // Find the next variable to consider
+            let next_var = paths
+                .iter()
+                .flat_map(|path| path.decisions.first())
+                .min_by_key(|&&(var, _)| order.get(var))
+                .map(|&(var, _)| var)
+                .unwrap();
+
+            let (low_paths, high_paths): (Vec<_>, Vec<_>) = paths.iter().partition(|path| {
+                path.decisions
+                    .first()
+                    .map_or(true, |&(v, d)| v != next_var || !d)
+            });
+
+            let low_paths: Vec<_> = low_paths
+                .into_iter()
+                .map(|p| {
+                    let mut new_p = p.clone();
+                    if !new_p.decisions.is_empty() && new_p.decisions[0].0 == next_var {
+                        new_p.decisions.remove(0);
+                    }
+                    new_p
+                })
+                .collect();
+
+            let high_paths: Vec<_> = high_paths
+                .into_iter()
+                .map(|p| {
+                    let mut new_p = p.clone();
+                    new_p.decisions.remove(0);
+                    new_p
+                })
+                .collect();
+
+            let low = construct_top_k_bdd(builder, &low_paths, order);
+            let high = construct_top_k_bdd(builder, &high_paths, order);
+
+            if low == high {
+                low
+            } else {
+                let new_node = BddNode::new(next_var, low, high);
+                builder.get_or_insert(new_node)
+            }
+        }
+
+        let top_k_paths = bottom_up_top_k(self, ptr, k, wmc);
+        let result: BddPtr<'a> = construct_top_k_bdd(self, &top_k_paths, self.order());
+        ptr.clear_scratch();
+        result
     }
 
     /// Get the current variable order
