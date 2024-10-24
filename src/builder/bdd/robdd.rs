@@ -198,7 +198,11 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> RobddBuilder<'a, T> {
         self.new_var(false)
     }
 
-    pub fn weighted_sample(&'a self, ptr: BddPtr<'a>, wmc: &WmcParams<RealSemiring>) -> BddPtr<'a> {
+    pub fn weighted_sample(
+        &'a self,
+        ptr: BddPtr<'a>,
+        wmc: &WmcParams<RealSemiring>,
+    ) -> (BddPtr<'a>, f64) {
         let mut rng = rand::thread_rng();
 
         fn bottomup_pass_h(ptr: BddPtr, wmc: &WmcParams<RealSemiring>) -> f64 {
@@ -254,16 +258,14 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> RobddBuilder<'a, T> {
             }
         }
 
-        // let r = bottomup_pass_h(ptr, wmc);
-
         fn sample_path<'b, T: IteTable<'b, BddPtr<'b>> + Default>(
             builder: &'b RobddBuilder<'b, T>,
             ptr: BddPtr<'b>,
             wmc: &WmcParams<RealSemiring>,
             rng: &mut ThreadRng,
-        ) -> BddPtr<'b> {
+        ) -> (BddPtr<'b>, f64) {
             match ptr {
-                BddPtr::PtrTrue => ptr,
+                BddPtr::PtrTrue => (ptr, 1.0),
                 BddPtr::PtrFalse => panic!("sample_path called on false!"),
                 BddPtr::Compl(node) | BddPtr::Reg(node) => {
                     let (l, h) = if ptr.is_neg() {
@@ -285,21 +287,29 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> RobddBuilder<'a, T> {
                     let total_weight = and_low + and_high;
                     let rand_val = rng.gen_range(0.0..total_weight);
                     if rand_val < and_low {
-                        let low_child = sample_path(builder, l, wmc, rng);
+                        let (low_child, low_child_probability) = sample_path(builder, l, wmc, rng);
                         let new_node = BddNode::new(node.var, low_child, BddPtr::PtrFalse);
-                        return builder.get_or_insert(new_node);
+                        return (
+                            builder.get_or_insert(new_node),
+                            low_child_probability * and_low / total_weight,
+                        );
                     } else {
-                        let high_child = sample_path(builder, h, wmc, rng);
+                        let (high_child, high_child_probability) =
+                            sample_path(builder, h, wmc, rng);
                         let new_node = BddNode::new(node.var, BddPtr::PtrFalse, high_child);
-                        return builder.get_or_insert(new_node);
+                        return (
+                            builder.get_or_insert(new_node),
+                            high_child_probability * and_high / total_weight,
+                        );
                     }
                 }
             }
         }
 
-        let sample = sample_path(self, ptr, wmc, &mut rng);
+        // let r = bottomup_pass_h(ptr, wmc);
+        let (sample, sample_probability) = sample_path(self, ptr, wmc, &mut rng);
         ptr.clear_scratch();
-        sample
+        (sample, sample_probability)
     }
 
     /// Compute the top K accepting paths through the BDD and return a new BDD containing only those paths

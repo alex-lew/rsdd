@@ -28,13 +28,19 @@ pub unsafe extern "C" fn cnf_from_dimacs(dimacs_str: *const c_char) -> *const Cn
     ))))
 }
 
+#[repr(C)]
+pub struct WeightedSampleResult {
+    sample: *mut BddPtr<'static>,
+    probability: f64,
+}
+
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn robdd_weighted_sample(
     builder: *mut RsddBddBuilder,
     bdd: *mut BddPtr<'static>,
     wmc_params: *mut WmcParams<RealSemiring>,
-) -> *mut BddPtr<'static> {
+) -> WeightedSampleResult {
     if bdd.is_null() || wmc_params.is_null() {
         eprintln!("Fatal error, got NULL pointer for `bdd` or `wmc_params`");
         std::process::abort();
@@ -44,8 +50,11 @@ pub unsafe extern "C" fn robdd_weighted_sample(
     let bdd = *bdd;
     let wmc_params = &*wmc_params;
 
-    let sample = builder.weighted_sample(bdd, wmc_params);
-    Box::into_raw(Box::new(sample))
+    let (sample, sample_probability) = builder.weighted_sample(bdd, wmc_params);
+    WeightedSampleResult {
+        sample: Box::into_raw(Box::new(sample)),
+        probability: sample_probability,
+    }
 }
 
 #[no_mangle]
