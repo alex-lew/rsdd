@@ -11,13 +11,14 @@ use crate::{
     repr::{BddNode, BddPtr, DDNNFPtr, PartialModel, VarLabel, VarOrder, WmcParams},
     util::semirings::RealSemiring,
 };
-use std::cell::RefCell;
+use std::{cell::RefCell, time::{Duration, Instant}};
 
 pub struct RobddBuilder<'a, T: IteTable<'a, BddPtr<'a>> + Default> {
     compute_table: RefCell<BackedRobinhoodTable<'a, BddNode<'a>>>,
     apply_table: RefCell<T>,
     stats: RefCell<BddBuilderStats>,
     order: RefCell<VarOrder>,
+    time_limit: Option<(Instant, Duration)>,
 }
 
 type SampleCache = (Option<f64>, Option<f64>);
@@ -59,6 +60,10 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<
     }
 
     fn ite_helper(&'a self, f: BddPtr<'a>, g: BddPtr<'a>, h: BddPtr<'a>) -> BddPtr<'a> {
+        if self.check_time_limit() {
+            return BddPtr::PtrFalse; // doesn't matter what we return here, our callee is responsible for checking the time limit
+        }
+
         self.stats.borrow_mut().num_recursive_calls += 1;
         let o = |a: BddPtr, b: BddPtr| match (a, b) {
             (BddPtr::PtrTrue, _) | (BddPtr::PtrFalse, _) => true,
@@ -96,6 +101,11 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<
             return t;
         };
 
+        if self.check_time_limit() {
+            // to avoid us caching this in apply_table
+            return BddPtr::PtrFalse;
+        }
+
         // now we have a new BDD
         let node = BddNode::new(lbl, f, t);
         let r = self.get_or_insert(node);
@@ -110,19 +120,35 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<
 
 impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> RobddBuilder<'a, T> {
     /// Creates a new variable manager with the specified order
-    pub fn new(order: VarOrder) -> RobddBuilder<'a, T> {
+    pub fn new(order: VarOrder, time_limit: Option<(Instant, Duration)>) -> RobddBuilder<'a, T> {
         RobddBuilder {
             compute_table: RefCell::new(BackedRobinhoodTable::new()),
             order: RefCell::new(order),
             apply_table: RefCell::new(T::default()),
             stats: RefCell::new(BddBuilderStats::new()),
+            time_limit,
         }
     }
 
     /// Make a BDD manager with a default variable ordering
     pub fn new_with_linear_order(num_vars: usize) -> RobddBuilder<'a, T> {
         let default_order = VarOrder::linear_order(num_vars);
-        RobddBuilder::new(default_order)
+        RobddBuilder::new(default_order, None)
+    }
+
+    pub fn start_time_limit(&mut self, time_limit: Duration) {
+        self.time_limit = Some((Instant::now(), time_limit));
+    }
+    pub fn stop_time_limit(&mut self) {
+        self.time_limit = None;
+    }
+
+    #[inline(always)]
+    pub fn check_time_limit(&self) -> bool {
+        if let Some((start_time, time_limit)) = self.time_limit {
+            return start_time.elapsed() > time_limit;
+        }
+        false
     }
 
     /// Returns the number of variables in the manager
