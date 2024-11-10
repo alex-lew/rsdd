@@ -140,7 +140,7 @@ fn single_wmc(
     verbose: bool,
     silent: bool,
 ) {
-    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order);
+    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order, None);
 
     let unweighted_params: WmcParams<FiniteField<{ primes::U64_LARGEST }>> =
         WmcParams::new(HashMap::from_iter(
@@ -188,7 +188,7 @@ fn partial_wmcs(
     verbose: bool,
     silent: bool,
 ) -> PartialWmcOutput<RealSemiring> {
-    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order.clone());
+    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order.clone(), None);
     let unweighted_params: WmcParams<FiniteField<{ primes::U64_LARGEST }>> =
         WmcParams::new(HashMap::from_iter(
             (0..num_vars as u64)

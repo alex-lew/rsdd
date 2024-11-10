@@ -67,7 +67,7 @@ fn main() {
         _ => todo!(),
     };
 
-    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order.clone());
+    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order.clone(), None);
     let bdd = builder.compile_logical_expr(&expr);
 
     let elapsed = start.elapsed();

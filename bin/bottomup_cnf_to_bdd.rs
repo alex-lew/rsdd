@@ -60,7 +60,7 @@ fn main() {
         ),
     };
 
-    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order);
+    let builder = RobddBuilder::<LruIteTable<BddPtr>>::new(order, None);
     let bdd = builder.compile_plan(&plan);
 
     let elapsed = start.elapsed();
