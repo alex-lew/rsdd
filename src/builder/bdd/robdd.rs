@@ -98,6 +98,7 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<
         let f = self.ite(fxn, gxn, hxn);
 
         if t == f {
+            self.apply_table.borrow_mut().insert(ite, t, hash);
             return t;
         };
 
