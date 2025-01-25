@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::CStr};
 
 use crate::builder::bdd::BddBuilder;
 use crate::repr::DDNNFPtr;
-use crate::util::semirings::{RealSemiring, Semiring};
+use crate::util::semirings::{RealSemiring, RealSemiringDeriv, Semiring};
 use crate::{
     builder::{bdd::RobddBuilder, cache::AllIteTable, BottomUpBuilder},
     constants::primes,
@@ -39,7 +39,7 @@ pub struct WeightedSampleResult {
 pub unsafe extern "C" fn robdd_weighted_sample(
     builder: *mut RsddBddBuilder,
     bdd: *mut BddPtr<'static>,
-    wmc_params: *mut WmcParams<RealSemiring>,
+    wmc_params: *mut WmcParams<RealSemiringDeriv>,
 ) -> WeightedSampleResult {
     if bdd.is_null() || wmc_params.is_null() {
         eprintln!("Fatal error, got NULL pointer for `bdd` or `wmc_params`");
@@ -63,7 +63,7 @@ pub unsafe extern "C" fn robdd_top_k_paths(
     builder: *mut RsddBddBuilder,
     bdd: *mut BddPtr<'static>,
     k: usize,
-    wmc: *mut WmcParams<RealSemiring>,
+    wmc: *mut WmcParams<RealSemiringDeriv>,
 ) -> *mut BddPtr<'static> {
     let builder = robdd_builder_from_ptr(builder);
     let bdd = *bdd;
@@ -369,14 +369,14 @@ pub unsafe extern "C" fn bdd_num_recursive_calls(builder: *mut RsddBddBuilder) -
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_wmc(
     bdd: *mut BddPtr<'static>,
-    wmc: *mut WmcParams<RealSemiring>,
+    wmc: *mut WmcParams<RealSemiringDeriv>,
 ) -> f64 {
     DDNNFPtr::unsmoothed_wmc(&(*bdd), &(*wmc)).0
 }
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn new_wmc_params_f64() -> *mut WmcParams<RealSemiring> {
+pub unsafe extern "C" fn new_wmc_params_f64() -> *mut WmcParams<RealSemiringDeriv> {
     Box::into_raw(Box::new(WmcParams::new(HashMap::from([]))))
 }
 #[no_mangle]
@@ -407,12 +407,12 @@ pub unsafe extern "C" fn bdd_exists(
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn wmc_param_f64_set_weight(
-    weights: *mut WmcParams<RealSemiring>,
+    weights: *mut WmcParams<RealSemiringDeriv>,
     var: u64,
     low: f64,
     high: f64,
 ) {
-    (*weights).set_weight(VarLabel::new(var), RealSemiring(low), RealSemiring(high))
+    (*weights).set_weight(VarLabel::new(var), RealSemiringDeriv(low, 0.0), RealSemiringDeriv(high, 0.0))
 }
 
 #[repr(C)]
@@ -422,7 +422,7 @@ pub struct WeightF64(pub f64, pub f64);
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn wmc_param_f64_var_weight(
-    weights: *mut WmcParams<RealSemiring>,
+    weights: *mut WmcParams<RealSemiringDeriv>,
     var: u64,
 ) -> WeightF64 {
     let (l, h) = (*weights).var_weight(VarLabel::new(var));
@@ -497,7 +497,7 @@ pub unsafe extern "C" fn free_bdd_manager(manager: *mut RsddBddBuilder) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn free_wmc_params(params: *mut WmcParams<RealSemiring>) {
+pub unsafe extern "C" fn free_wmc_params(params: *mut WmcParams<RealSemiringDeriv>) {
     if !params.is_null() {
         drop(Box::from_raw(params));
     }
