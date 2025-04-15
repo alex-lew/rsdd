@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::CStr};
 
 use crate::builder::bdd::BddBuilder;
 use crate::repr::DDNNFPtr;
-use crate::util::semirings::{RealSemiring, DualNumber, Semiring};
+use crate::util::semirings::{RealSemiring, NPARTIALS, DualNumber, Semiring};
 use crate::{
     builder::{bdd::RobddBuilder, cache::AllIteTable, BottomUpBuilder},
     constants::primes,
@@ -13,7 +13,6 @@ use crate::{
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
-const NPARTIALS: usize = 3;
 
 #[no_mangle]
 pub extern "C" fn var_order_linear(num_vars: usize) -> *const VarOrder {

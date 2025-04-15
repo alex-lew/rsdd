@@ -2,7 +2,7 @@ use super::semiring_traits::*;
 use std::{fmt::Display, ops};
 use serde::{Serialize, Deserialize};
 
-const NPARTIALS: usize = 3;
+pub const NPARTIALS: usize = 3;
 
 #[derive(Clone, Debug, PartialEq, Copy, Serialize, Deserialize)]
 pub struct DualNumber(pub f64, pub [f64; NPARTIALS]);
