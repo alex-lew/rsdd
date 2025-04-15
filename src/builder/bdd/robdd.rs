@@ -662,7 +662,7 @@ mod tests {
 
     use crate::builder::BottomUpBuilder;
     use crate::repr::WmcParams;
-    use crate::util::semirings::{FiniteField, RealSemiring};
+    use crate::util::semirings::{FiniteField, RealSemiring, DualNumber};
     use crate::{builder::cache::AllIteTable, repr::DDNNFPtr};
 
     use crate::{
@@ -719,20 +719,43 @@ mod tests {
     }
 
     #[test]
-    fn test_wmc() {
+    fn wmc_test_dual_1() {
         let builder = RobddBuilder::<AllIteTable<BddPtr>>::new_with_linear_order(2);
         let v1 = builder.var(VarLabel::new(0), true);
         let v2 = builder.var(VarLabel::new(1), true);
         let r1 = builder.or(v1, v2);
         let weights = HashMap::from_iter([
-            (VarLabel::new(0), (RealSemiring(0.2), RealSemiring(0.8))),
-            (VarLabel::new(1), (RealSemiring(0.1), RealSemiring(0.9))),
+            (VarLabel::new(0), (DualNumber(0.2, [-1.0, 0.0, 0.0]), DualNumber(0.8, [1.0, 0.0, 0.0]))),
+            (VarLabel::new(1), (DualNumber(0.1, [0.0, -1.0, 0.0]), DualNumber(0.9, [0.0, 1.0, 0.0]))),
         ]);
         let params = WmcParams::new(weights);
         let wmc = r1.unsmoothed_wmc(&params);
         assert!((wmc.0 - (1.0 - 0.2 * 0.1)).abs() < 0.000001);
+        let expected_derivs = [0.1, 0.2, 0.0];
+        for i in 0..3 {
+            assert!((wmc.1[i] - expected_derivs[i]).abs() < 0.000001);
+        }
     }
 
+    #[test]
+    fn wmc_test_dual_2() {
+        let builder = RobddBuilder::<AllIteTable<BddPtr>>::new_with_linear_order(2);
+        let v1 = builder.var(VarLabel::new(0), true);
+        let v2 = builder.var(VarLabel::new(1), true);
+        let r1 = builder.and(v1, v2);
+        let weights = HashMap::from_iter([
+            (VarLabel::new(0), (DualNumber(0.2, [-1.0, 0.0, 0.0]), DualNumber(0.8, [1.0, 0.0, 0.0]))),
+            (VarLabel::new(1), (DualNumber(0.1, [0.0, -1.0, 0.0]), DualNumber(0.9, [0.0, 1.0, 0.0]))),
+        ]);
+        let params = WmcParams::new(weights);
+        let wmc = r1.unsmoothed_wmc(&params);
+        assert!((wmc.0 - 0.8*0.9).abs() < 0.000001);
+        let expected_derivs = [0.9, 0.8, 0.0];
+        for i in 0..3 {
+            assert!((wmc.1[i] - expected_derivs[i]).abs() < 0.000001);
+        }
+    }
+    
     #[test]
     fn test_condition() {
         let builder = RobddBuilder::<AllIteTable<BddPtr>>::new_with_linear_order(3);
@@ -926,7 +949,7 @@ mod tests {
     }
 
     #[test]
-    fn wmc_test_2() {
+    fn wmc_test_dual_3() {
         let builder = RobddBuilder::<AllIteTable<BddPtr>>::new_with_linear_order(4);
         let x = builder.var(VarLabel::new(0), true);
         let y = builder.var(VarLabel::new(1), true);
@@ -934,10 +957,10 @@ mod tests {
         let f2 = builder.var(VarLabel::new(3), true);
 
         let map = HashMap::from_iter([
-            (VarLabel::new(0), (RealSemiring(1.0), RealSemiring(1.0))),
-            (VarLabel::new(1), (RealSemiring(1.0), RealSemiring(1.0))),
-            (VarLabel::new(2), (RealSemiring(0.8), RealSemiring(0.2))),
-            (VarLabel::new(3), (RealSemiring(0.7), RealSemiring(0.3))),
+            (VarLabel::new(0), (DualNumber(0.5, [-1.0, 0.0, 0.0]), DualNumber(0.5, [1.0, 0.0, 0.0]))),
+            (VarLabel::new(1), (DualNumber(0.5, [-1.0, 0.0, 0.0]), DualNumber(0.5, [1.0, 0.0, 0.0]))),
+            (VarLabel::new(2), (DualNumber(0.8, [0.0, -1.0, 0.0]), DualNumber(0.2, [0.0, 1.0, 0.0]))),
+            (VarLabel::new(3), (DualNumber(0.7, [0.0, 0.0, -1.0]), DualNumber(0.3, [0.0, 0.0, 1.0]))),
         ]);
 
         let wmc = WmcParams::new(map);
@@ -946,7 +969,41 @@ mod tests {
         let obs = builder.or(x, y);
         let and1 = builder.and(iff1, iff2);
         let f = builder.and(and1, obs);
-        assert_eq!(f.unsmoothed_wmc(&wmc).0, 0.2 * 0.3 + 0.2 * 0.7 + 0.8 * 0.3);
+        assert!((f.unsmoothed_wmc(&wmc).0 - 0.11).abs() < 0.000001);
+        let expected_derivs = [0.06, 0.175, 0.2];
+        for i in 0..3 {
+            assert!((f.unsmoothed_wmc(&wmc).1[i] - expected_derivs[i]).abs() < 0.000001);
+        }
+    }
+
+    #[test]
+    fn wmc_test_dual_4() {
+        let builder = RobddBuilder::<AllIteTable<BddPtr>>::new_with_linear_order(4);
+        let x = builder.var(VarLabel::new(0), true);
+        let y = builder.var(VarLabel::new(1), true);
+        let f1 = builder.var(VarLabel::new(2), true);
+        let f2 = builder.var(VarLabel::new(3), true);
+
+        let map = HashMap::from_iter([
+            (VarLabel::new(0), (DualNumber(0.8, [-1.0, 0.0, 0.0]), DualNumber(0.2, [1.0, 0.0, 0.0]))),
+            (VarLabel::new(1), (DualNumber(0.8, [-1.0, 0.0, 0.0]), DualNumber(0.2, [1.0, 0.0, 0.0]))),
+            (VarLabel::new(2), (DualNumber(0.8, [0.0, -1.0, 0.0]), DualNumber(0.2, [0.0, 1.0, 0.0]))),
+            (VarLabel::new(3), (DualNumber(0.7, [0.0, 0.0, -1.0]), DualNumber(0.3, [0.0, 0.0, 1.0]))),
+        ]);
+
+        let wmc = WmcParams::new(map);
+        let iff1 = builder.iff(x, f1);
+        let iff2 = builder.iff(y, f2);
+        let obs = builder.or(x, y);
+        let and1 = builder.and(iff1, iff2);
+        let f = builder.and(and1, obs);
+        println!("comparison: {}", f.unsmoothed_wmc(&wmc).0);
+        assert!((f.unsmoothed_wmc(&wmc).0 - 0.0632).abs() < 0.000001);
+        let expected_derivs = [0.252, 0.076, 0.104];
+        for i in 0..3 {
+            println!("comparison: {}, {}", f.unsmoothed_wmc(&wmc).1[i], expected_derivs[i]);
+            assert!((f.unsmoothed_wmc(&wmc).1[i] - expected_derivs[i]).abs() < 0.000001);
+        }
     }
 
     #[test]
@@ -1020,12 +1077,15 @@ mod tests {
         let smoothed = builder.smooth(bdd, cnf.num_vars());
 
         let weighted_model_count =
-            smoothed.unsmoothed_wmc(&WmcParams::<RealSemiring>::new(HashMap::from_iter([
-                (VarLabel::new(0), (RealSemiring(0.4), RealSemiring(0.6))),
-                (VarLabel::new(1), (RealSemiring(0.3), RealSemiring(0.7))),
+            smoothed.unsmoothed_wmc(&WmcParams::<DualNumber>::new(HashMap::from_iter([
+                (VarLabel::new(0), (DualNumber(0.4,  [-1.0, 0.0, 0.0]), DualNumber(0.6, [1.0, 0.0, 0.0]))),
+                (VarLabel::new(1), (DualNumber(0.3, [0.0, -1.0, 0.0]), DualNumber(0.7, [0.0, 1.0, 0.0]))),
             ])));
-
         assert_eq!(weighted_model_count.0, 0.54);
+        let expected_derivs = [0.4, 0.2, 0.0];
+        for i in 0..3 {
+            assert!((weighted_model_count.1[i] - expected_derivs[i]).abs() < 0.000001);
+        }
     }
 
     #[test]
