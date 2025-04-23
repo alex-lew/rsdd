@@ -482,7 +482,7 @@ impl Cnf {
                     .enumerate()
                     .fold(T::one(), |v, (idx, &polarity)| {
                         let (loww, highw) = weight_vec[idx];
-                        v.mul(if polarity { *highw } else { *loww })
+                        v.mul(if polarity { highw.clone() } else { loww.clone() })
                     });
                 total = total + assgn_w;
             }

@@ -497,7 +497,7 @@ impl<'a> BddPtr<'a> {
         self.print_bdd_lbl(&HashMap::new())
     }
 
-    fn bdd_fold_h<T: Clone + Copy + Debug, F: Fn(VarLabel, T, T) -> T>(
+    fn bdd_fold_h<T: Clone + Debug, F: Fn(VarLabel, T, T) -> T>(
         &self,
         f: &F,
         low_v: T,
@@ -518,15 +518,15 @@ impl<'a> BddPtr<'a> {
 
                 let fold_helper = |prev_low, prev_high| {
                     // Standard fold stuff
-                    let l = self.low().bdd_fold_h(f, low_v, high_v);
+                    let l = self.low().bdd_fold_h(f, low_v.clone(), high_v.clone());
                     let h = self.high().bdd_fold_h(f, low_v, high_v);
                     let res = f(node.var, l, h);
                     // Set cache (accumulator)
                     // Then corrects scratch so it traverses correctly in a recursive case downstream
                     if self.is_neg() {
-                        self.set_scratch::<(Option<T>, Option<T>)>((Some(res), prev_high));
+                        self.set_scratch::<(Option<T>, Option<T>)>((Some(res.clone()), prev_high));
                     } else {
-                        self.set_scratch::<(Option<T>, Option<T>)>((prev_low, Some(res)));
+                        self.set_scratch::<(Option<T>, Option<T>)>((prev_low, Some(res.clone())));
                     }
                     res
                 };
@@ -545,7 +545,7 @@ impl<'a> BddPtr<'a> {
         }
     }
 
-    pub fn bdd_fold<T: Clone + Copy + Debug, F: Fn(VarLabel, T, T) -> T>(
+    pub fn bdd_fold<T: Clone + Debug, F: Fn(VarLabel, T, T) -> T>(
         &self,
         f: &F,
         low_v: T,
@@ -806,9 +806,9 @@ impl<'a> BddPtr<'a> {
         for lit in partial_join_assgn.assignment_iter() {
             let (l, h) = wmc.var_weight(lit.label());
             if lit.polarity() {
-                partial_join_acc = partial_join_acc * (*h);
+                partial_join_acc = partial_join_acc * h.clone();
             } else {
-                partial_join_acc = partial_join_acc * (*l);
+                partial_join_acc = partial_join_acc * l.clone();
             }
         }
         // top-down UB calculation via bdd_fold
@@ -822,12 +822,12 @@ impl<'a> BddPtr<'a> {
                     None => {
                         // If it's a join variable, (w_l * low) ∨ (w_h * high)
                         if join_vars.contains(varlabel.value_usize()) {
-                            let lhs = *w_l * low;
-                            let rhs = *w_h * high;
+                            let lhs = w_l.clone() * low;
+                            let rhs = w_h.clone() * high;
                             JoinSemilattice::join(&lhs, &rhs)
                         // Otherwise it is a sum variables, so
                         } else {
-                            (*w_l * low) + (*w_h * high)
+                            (w_l.clone() * low) + (w_h.clone() * high)
                         }
                     }
                     // If our node has already been assigned, then we
@@ -836,8 +836,8 @@ impl<'a> BddPtr<'a> {
                     Some(false) => low,
                 }
             },
-            wmc.zero,
-            wmc.one,
+            wmc.zero.clone(),
+            wmc.one.clone(),
         );
         partial_join_acc * v
     }
@@ -870,7 +870,7 @@ impl<'a> BddPtr<'a> {
             // If there exists an unassigned decision variable,
             [x, end @ ..] => {
                 let mut best_model = cur_best.clone();
-                let mut best_lb = cur_lb;
+                let mut best_lb = cur_lb.clone();
                 let join_vars_bits = BitSet::from_iter(end.iter().map(|x| x.value_usize()));
                 // Consider the assignment of it to true...
                 let mut true_model = cur_assgn.clone();
@@ -899,7 +899,7 @@ impl<'a> BddPtr<'a> {
                         if new_lb == rec {
                             (best_lb, best_model) = (rec, rec_pm);
                         } else {
-                            (best_lb, best_model) = (cur_lb, cur_best.clone());
+                            (best_lb, best_model) = (cur_lb.clone(), cur_best.clone());
                         }
                     }
                 }
@@ -982,12 +982,12 @@ impl<'a> DDNNFPtr<'a> for BddPtr<'a> {
         }
     }
 
-    fn fold<T: Clone + Copy + Debug, F: Fn(DDNNF<T>) -> T>(&self, f: F) -> T
+    fn fold<T: Clone + Debug, F: Fn(DDNNF<T>) -> T>(&self, f: F) -> T
     where
         T: 'static,
     {
         debug_assert!(self.is_scratch_cleared());
-        fn bottomup_pass_h<T: Clone + Copy + Debug, F: Fn(DDNNF<T>) -> T>(ptr: BddPtr, f: &F) -> T
+        fn bottomup_pass_h<T: Clone + Debug, F: Fn(DDNNF<T>) -> T>(ptr: BddPtr, f: &F) -> T
         where
             T: 'static,
         {
@@ -1024,9 +1024,9 @@ impl<'a> DDNNFPtr<'a> for BddPtr<'a> {
 
                         // cache and return or_v
                         if ptr.is_neg() {
-                            ptr.set_scratch::<DDNNFCache<T>>((Some(or_v), cached));
+                            ptr.set_scratch::<DDNNFCache<T>>((Some(or_v.clone()), cached));
                         } else {
-                            ptr.set_scratch::<DDNNFCache<T>>((cached, Some(or_v)));
+                            ptr.set_scratch::<DDNNFCache<T>>((cached, Some(or_v.clone())));
                         }
                         or_v
                     };

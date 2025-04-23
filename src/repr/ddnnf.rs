@@ -74,14 +74,14 @@ pub trait DDNNFPtr<'a>: Clone + Debug + PartialEq + Eq + Hash + Copy {
             match ddnnf {
                 Or(l, r, _) => l + r,
                 And(l, r) => l * r,
-                True => params.one,
-                False => params.zero,
+                True => params.one.clone(),
+                False => params.zero.clone(),
                 Lit(lbl, polarity) => {
                     let (low_w, high_w) = params.var_weight(lbl);
                     if polarity {
-                        *high_w
+                        high_w.clone()
                     } else {
-                        *low_w
+                        low_w.clone()
                     }
                 }
             }

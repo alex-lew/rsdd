@@ -268,12 +268,12 @@ impl<'a> SddPtr<'a> {
 type DDNNFCache<T> = (Option<T>, Option<T>);
 
 impl<'a> DDNNFPtr<'a> for SddPtr<'a> {
-    fn fold<T: 'static + Clone + Copy + std::fmt::Debug, F: Fn(super::ddnnf::DDNNF<T>) -> T>(
+    fn fold<T: 'static + Clone + std::fmt::Debug, F: Fn(super::ddnnf::DDNNF<T>) -> T>(
         &self,
         f: F,
     ) -> T {
         debug_assert!(self.is_scratch_cleared());
-        fn bottomup_pass_h<T: 'static + Clone + Copy + Debug, F: Fn(DDNNF<T>) -> T>(
+        fn bottomup_pass_h<T: 'static + Clone + Debug, F: Fn(DDNNF<T>) -> T>(
             ptr: SddPtr,
             f: &F,
         ) -> T {
@@ -303,9 +303,9 @@ impl<'a> DDNNFPtr<'a> for SddPtr<'a> {
 
                         // cache and return or_v
                         if ptr.is_neg() {
-                            ptr.set_scratch::<DDNNFCache<T>>((Some(or_v), cached));
+                            ptr.set_scratch::<DDNNFCache<T>>((Some(or_v.clone()), cached));
                         } else {
-                            ptr.set_scratch::<DDNNFCache<T>>((cached, Some(or_v)));
+                            ptr.set_scratch::<DDNNFCache<T>>((cached, Some(or_v.clone())));
                         }
                         or_v
                     };
