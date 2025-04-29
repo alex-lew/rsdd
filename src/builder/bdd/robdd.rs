@@ -957,10 +957,10 @@ mod tests {
         let f2 = builder.var(VarLabel::new(3), true);
 
         let map = HashMap::from_iter([
-            (VarLabel::new(0), (DualNumber(0.5, vec![-1.0, 0.0, 0.0]), DualNumber(0.5, vec![1.0, 0.0, 0.0]))),
-            (VarLabel::new(1), (DualNumber(0.5, vec![-1.0, 0.0, 0.0]), DualNumber(0.5, vec![1.0, 0.0, 0.0]))),
-            (VarLabel::new(2), (DualNumber(0.8, vec![0.0, -1.0, 0.0]), DualNumber(0.2, vec![0.0, 1.0, 0.0]))),
-            (VarLabel::new(3), (DualNumber(0.7, vec![0.0, 0.0, -1.0]), DualNumber(0.3, vec![0.0, 0.0, 1.0]))),
+            (VarLabel::new(0), (DualNumber(0.5, vec![-1.0, 0.0, 0.0, 0.0]), DualNumber(0.5, vec![1.0, 0.0, 0.0, 0.0]))),
+            (VarLabel::new(1), (DualNumber(0.5, vec![-1.0, 0.0, 0.0, 0.0]), DualNumber(0.5, vec![1.0, 0.0, 0.0, 0.0]))),
+            (VarLabel::new(2), (DualNumber(0.8, vec![0.0, -1.0, 0.0, 0.0]), DualNumber(0.2, vec![0.0, 1.0, 0.0, 0.0]))),
+            (VarLabel::new(3), (DualNumber(0.7, vec![0.0, 0.0, -1.0, 0.0]), DualNumber(0.3, vec![0.0, 0.0, 1.0, 0.0]))),
         ]);
 
         let wmc = WmcParams::new(map);
