@@ -103,7 +103,7 @@ pub unsafe extern "C" fn robdd_builder_all_table(order: *mut VarOrder) -> *mut R
     }
 
     let order = *Box::from_raw(order);
-    Box::into_raw(Box::new(RobddBuilder::<AllIteTable<BddPtr>>::new(order, None))).cast()
+    Box::into_raw(Box::new(RobddBuilder::<AllIteTable<BddPtr>>::new(order))).cast()
 }
 
 #[no_mangle]
@@ -148,7 +148,7 @@ pub unsafe extern "C" fn robdd_model_count(
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn mk_bdd_manager_default_order(num_vars: u64) -> *mut RsddBddBuilder {
     Box::into_raw(Box::new(RobddBuilder::<AllIteTable<BddPtr>>::new(
-        VarOrder::linear_order(num_vars as usize), None
+        VarOrder::linear_order(num_vars as usize)
     )))
     .cast()
 }
@@ -163,6 +163,13 @@ pub unsafe extern "C" fn start_bdd_manager_time_limit(builder: *mut RsddBddBuild
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn start_bdd_manager_ite_limit(builder: *mut RsddBddBuilder, ite_limit: usize) {
+    let builder = robdd_builder_from_ptr(builder);
+    builder.start_ite_limit(ite_limit);
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn stop_bdd_manager_time_limit(builder: *mut RsddBddBuilder) {
     let builder = robdd_builder_from_ptr(builder);
     builder.stop_time_limit();
@@ -170,9 +177,23 @@ pub unsafe extern "C" fn stop_bdd_manager_time_limit(builder: *mut RsddBddBuilde
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn stop_bdd_manager_ite_limit(builder: *mut RsddBddBuilder) {
+    let builder = robdd_builder_from_ptr(builder);
+    builder.stop_ite_limit();
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_manager_time_limit_exceeded(builder: *mut RsddBddBuilder) -> bool {
     let builder = robdd_builder_from_ptr(builder);
     builder.check_time_limit()
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_manager_ite_limit_exceeded(builder: *mut RsddBddBuilder) -> bool {
+    let builder = robdd_builder_from_ptr(builder);
+    builder.check_ite_limit()
 }
 
 #[no_mangle]
