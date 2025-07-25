@@ -519,19 +519,16 @@ pub unsafe extern "C" fn wmc_param_f64_var_weight_dual(
     WeightF64(l.0, h.0)
 }
 
-// Updated to include size check
+
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn wmc_param_f64_var_partial(
     partials: *const f64,
     metaparam: usize,
-    size: usize, // Added size parameter
+    size: usize,
 ) -> f64 {
-    if metaparam < size {
-        *partials.add(metaparam)
-    } else {
-        0.0 // Return 0.0 if out of bounds
-    }
+    assert!(metaparam < size);
+    *partials.add(metaparam) // this is pointer arithmetic
 }
 
 #[no_mangle]
