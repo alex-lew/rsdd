@@ -495,33 +495,6 @@ pub unsafe extern "C" fn wmc_param_f64_set_weight_deriv_dual(
     )
 }
 
-// Updated to take a size parameter
-#[no_mangle]
-#[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn wmc_param_f64_set_weight_dual(
-    weights: *mut WmcParams<DualNumber>,
-    var: u64,
-    metaparam: usize,
-    vector_size: usize, // Added parameter for vector size
-    low: f64,
-    high: f64,
-) {
-    // Create vectors with zeros and set the specific index
-    let mut low_deriv_vec = vec![0.0; vector_size];
-    let mut high_deriv_vec = vec![0.0; vector_size];
-    
-    if metaparam < vector_size {
-        low_deriv_vec[metaparam] = -1.0;
-        high_deriv_vec[metaparam] = 1.0;
-    }
-
-    (*weights).set_weight(
-        VarLabel::new(var),
-        DualNumber(low, low_deriv_vec),
-        DualNumber(high, high_deriv_vec)
-    )
-}
-
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct WeightF64(pub f64, pub f64);
