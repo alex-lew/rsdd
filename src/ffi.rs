@@ -392,6 +392,19 @@ pub unsafe extern "C" fn bdd_num_recursive_calls(builder: *mut RsddBddBuilder) -
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_deep_copy(bdd: *mut BddPtr<'static>) -> *mut BddPtr<'static> {
+    let bdd = (*bdd).deep_copy();
+    Box::into_raw(Box::new(bdd))
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_free_deep_copy(bdd: *mut BddPtr<'static>) {
+    (*bdd).free_deep_copy();
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_wmc(
     bdd: *mut BddPtr<'static>,
     wmc: *mut WmcParams<RealSemiring>,

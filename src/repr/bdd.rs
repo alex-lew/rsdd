@@ -15,6 +15,7 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::HashMap,
+    collections::HashSet,
     hash::{Hash, Hasher},
     iter::FromIterator,
     ptr,
@@ -1186,5 +1187,70 @@ impl<'a> Ord for BddNode<'a> {
             ord => return ord, // observe: this is not equal!
         }
         core::cmp::Ordering::Equal
+    }
+}
+
+
+impl<'a> BddPtr<'a> {
+
+    /// deep copies the BDD in a way that separates it from the ROBDD table.
+    /// Note this will leak memory unless you manually call `free_deep_copy` on the result.
+    pub fn deep_copy<'b>(&self) -> BddPtr<'b> {
+        let mut memo: HashMap<*const BddNode<'a>, &'b BddNode<'b>> = HashMap::new();
+        self.deep_copy_with_memo(&mut memo)
+    }
+    
+    fn deep_copy_with_memo<'b>(&self, memo: &mut HashMap<*const BddNode<'a>, &'b BddNode<'b>>) -> BddPtr<'b> {
+        match self {
+            BddPtr::PtrTrue => BddPtr::PtrTrue,
+            BddPtr::PtrFalse => BddPtr::PtrFalse,
+            BddPtr::Compl(node) => {
+                let new_node = Self::copy_node_with_memo(node, memo);
+                BddPtr::Compl(new_node)
+            }
+            BddPtr::Reg(node) => {
+                let new_node = Self::copy_node_with_memo(node, memo);
+                BddPtr::Reg(new_node)
+            }
+        }
+    }
+    
+    fn copy_node_with_memo<'b>(node: &BddNode<'a>, memo: &mut HashMap<*const BddNode<'a>, &'b BddNode<'b>>) -> &'b BddNode<'b> {
+        let node_ptr = node as *const BddNode<'a>;
+        if let Some(&existing) = memo.get(&node_ptr) {
+            return existing;
+        }
+        
+        let new_node = Box::leak(Box::new(BddNode {
+            var: node.var,
+            low: node.low.deep_copy_with_memo(memo),
+            high: node.high.deep_copy_with_memo(memo),
+            data: RefCell::new(None), // Reset scratch space
+            semantic_hash: RefCell::new(None), // Reset cache
+        }));
+        
+        memo.insert(node_ptr, new_node);
+        new_node
+    }
+
+    /// frees the deep copy of the BDD
+    pub unsafe fn free_deep_copy(&self) {
+        let mut visited: HashSet<*const BddNode<'a>> = HashSet::new();
+        self.free_with_visited(&mut visited);
+    }
+    
+    unsafe fn free_with_visited(&self, visited: &mut HashSet<*const BddNode<'a>>) {
+        match self {
+            BddPtr::PtrTrue | BddPtr::PtrFalse => {}
+            BddPtr::Compl(node) | BddPtr::Reg(node) => {
+                let node_ptr = *node as *const BddNode<'a>;
+                if visited.insert(node_ptr) { // Only free if not already visited
+                    node.low.free_with_visited(visited);
+                    node.high.free_with_visited(visited);
+                    // Convert back to Box and drop it
+                    let _ = Box::from_raw(node_ptr as *mut BddNode<'a>);
+                }
+            }
+        }
     }
 }
