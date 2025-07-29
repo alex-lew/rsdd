@@ -46,7 +46,7 @@ crate-type = ["cdylib", "lib", "staticlib"]
 
 [profile.release]
 opt-level = 3
-debug = true
+debug = false
 debug-assertions = false
 overflow-checks = false
 lto = true
