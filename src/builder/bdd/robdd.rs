@@ -61,10 +61,7 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<
     }
 
     fn ite_helper(&'a self, f: BddPtr<'a>, g: BddPtr<'a>, h: BddPtr<'a>) -> BddPtr<'a> {
-        if self.check_time_limit() {
-            return BddPtr::PtrFalse; // doesn't matter what we return here, our callee is responsible for checking the time limit
-        }
-        if self.check_ite_limit() {
+        if self.check_time_limit() || self.check_ite_limit() {
             return BddPtr::PtrFalse; // doesn't matter what we return here, our callee is responsible for checking the time limit
         }
 
@@ -106,11 +103,7 @@ impl<'a, T: IteTable<'a, BddPtr<'a>> + Default> BddBuilder<'a> for RobddBuilder<
             return t;
         };
 
-        if self.check_time_limit() {
-            // to avoid us caching this in apply_table
-            return BddPtr::PtrFalse;
-        }
-        if self.check_ite_limit() {
+        if self.check_time_limit() || self.check_ite_limit() {
             // to avoid us caching this in apply_table
             return BddPtr::PtrFalse;
         }
