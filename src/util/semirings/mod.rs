@@ -4,6 +4,8 @@ mod finitefield;
 mod rational;
 mod realsemiring;
 mod dualnumber;
+mod logsemiring;
+mod logdualnumber;
 mod semiring_traits;
 mod tropical;
 
@@ -13,5 +15,7 @@ pub use self::finitefield::*;
 pub use self::rational::*;
 pub use self::realsemiring::*;
 pub use self::dualnumber::*;
+pub use self::logsemiring::*;
+pub use self::logdualnumber::*;
 pub use self::semiring_traits::*;
 pub use self::tropical::*;

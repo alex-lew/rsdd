@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::CStr};
 
 use crate::builder::bdd::BddBuilder;
 use crate::repr::DDNNFPtr;
-use crate::util::semirings::{RealSemiring, DualNumber, Semiring};
+use crate::util::semirings::{RealSemiring, DualNumber, LogSemiring, LogDualNumber, Semiring};
 use crate::{
     builder::{bdd::RobddBuilder, cache::AllIteTable, BottomUpBuilder},
     constants::primes,
@@ -407,7 +407,7 @@ pub unsafe extern "C" fn bdd_free_deep_copy(bdd: *mut BddPtr<'static>) {
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_wmc(
     bdd: *mut BddPtr<'static>,
-    wmc: *mut WmcParams<RealSemiring>,
+    wmc: *mut WmcParams<LogSemiring>,
 ) -> f64 {
     DDNNFPtr::unsmoothed_wmc(&(*bdd), &(*wmc)).0
 }
@@ -417,30 +417,30 @@ pub unsafe extern "C" fn bdd_wmc(
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_wmc_dual(
     bdd: *mut BddPtr<'static>,
-    wmc: *mut WmcParams<DualNumber>,
+    wmc: *mut WmcParams<LogDualNumber>,
 ) -> WMCDual {
     let result = DDNNFPtr::unsmoothed_wmc(&(*bdd), &(*wmc));
 
     // Get the vector size
     let size = result.1.len();
-    
+
     // Create a heap-allocated copy of the vector
     let deriv = result.1.clone();
     let deriv_ptr = deriv.as_ptr();
     std::mem::forget(deriv); // Prevent deallocation
-    
+
     WMCDual(result.0, deriv_ptr, size)
 }
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn new_wmc_params_f64() -> *mut WmcParams<RealSemiring> {
+pub unsafe extern "C" fn new_wmc_params_f64() -> *mut WmcParams<LogSemiring> {
     Box::into_raw(Box::new(WmcParams::new(HashMap::from([]))))
 }
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
-pub unsafe extern "C" fn new_wmc_params_f64_dual() -> *mut WmcParams<DualNumber> {
+pub unsafe extern "C" fn new_wmc_params_f64_dual() -> *mut WmcParams<LogDualNumber> {
     Box::into_raw(Box::new(WmcParams::new(HashMap::from([]))))
 }
 
@@ -472,19 +472,19 @@ pub unsafe extern "C" fn bdd_exists(
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn wmc_param_f64_set_weight(
-    weights: *mut WmcParams<RealSemiring>,
+    weights: *mut WmcParams<LogSemiring>,
     var: u64,
     low: f64,
     high: f64,
 ) {
-    (*weights).set_weight(VarLabel::new(var), RealSemiring(low), RealSemiring(high))
+    (*weights).set_weight(VarLabel::new(var), LogSemiring(low), LogSemiring(high))
 }
 
 // Updated to handle dynamic-sized vectors
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn wmc_param_f64_set_weight_deriv_dual(
-    weights: *mut WmcParams<DualNumber>,
+    weights: *mut WmcParams<LogDualNumber>,
     var: u64,
     low: f64,
     low_deriv_ptr: *const f64,
@@ -496,15 +496,15 @@ pub unsafe extern "C" fn wmc_param_f64_set_weight_deriv_dual(
     // Create slices from the provided pointers and sizes
     let low_deriv = std::slice::from_raw_parts(low_deriv_ptr, low_size);
     let high_deriv = std::slice::from_raw_parts(high_deriv_ptr, high_size);
-    
+
     // Convert to Vec<f64>
     let low_deriv_vec = low_deriv.to_vec();
     let high_deriv_vec = high_deriv.to_vec();
 
     (*weights).set_weight(
         VarLabel::new(var),
-        DualNumber(low, low_deriv_vec),
-        DualNumber(high, high_deriv_vec)
+        LogDualNumber(low, low_deriv_vec),
+        LogDualNumber(high, high_deriv_vec)
     )
 }
 
@@ -515,7 +515,7 @@ pub struct WeightF64(pub f64, pub f64);
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn wmc_param_f64_var_weight(
-    weights: *mut WmcParams<RealSemiring>,
+    weights: *mut WmcParams<LogSemiring>,
     var: u64,
 ) -> WeightF64 {
     let (l, h) = (*weights).var_weight(VarLabel::new(var));
@@ -525,7 +525,7 @@ pub unsafe extern "C" fn wmc_param_f64_var_weight(
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn wmc_param_f64_var_weight_dual(
-    weights: *mut WmcParams<DualNumber>,
+    weights: *mut WmcParams<LogDualNumber>,
     var: u64,
 ) -> WeightF64 {
     let (l, h) = (*weights).var_weight(VarLabel::new(var));
@@ -637,14 +637,14 @@ pub unsafe extern "C" fn free_bdd_manager(manager: *mut RsddBddBuilder) {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn free_wmc_params(params: *mut WmcParams<RealSemiring>) {
+pub unsafe extern "C" fn free_wmc_params(params: *mut WmcParams<LogSemiring>) {
     if !params.is_null() {
         drop(Box::from_raw(params));
     }
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn free_wmc_params_dual(params: *mut WmcParams<DualNumber>) {
+pub unsafe extern "C" fn free_wmc_params_dual(params: *mut WmcParams<LogDualNumber>) {
     if !params.is_null() {
         drop(Box::from_raw(params));
     }
