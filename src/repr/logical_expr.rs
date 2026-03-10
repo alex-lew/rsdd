@@ -1,7 +1,6 @@
 //! A representation of an arbitrary logical formula
 
 use crate::{repr::VarLabel, serialize::LogicalSExpr};
-use dimacs::*;
 use rand::{self, rngs::ThreadRng, Rng};
 use std::collections::HashMap;
 
@@ -41,23 +40,18 @@ impl LogicalExpr {
     /// assert!(matches!(expr, LogicalExpr::Or(_, _)));
     /// ```
     pub fn from_dimacs(input: &str) -> LogicalExpr {
-        let (_, cvec) = match parse_dimacs(input).unwrap() {
-            Instance::Cnf { num_vars, clauses } => (num_vars, clauses),
-            Instance::Sat {
-                num_vars: _,
-                extensions: _,
-                formula: _,
-            } => panic!("Received (valid) SAT input, not CNF"),
-        };
+        let parsed = super::parse_dimacs_cnf(input).expect("failed to parse DIMACS CNF");
         let mut clause_vec: Vec<LogicalExpr> = Vec::new();
-        for itm in cvec.iter() {
+        for itm in parsed.clauses.iter() {
             let mut lit_vec: Vec<LogicalExpr> = Vec::new();
-            for l in itm.lits().iter() {
-                let b = match l.sign() {
-                    Sign::Neg => false,
-                    Sign::Pos => true,
-                };
-                lit_vec.push(LogicalExpr::Literal(l.var().to_u64() as usize, b));
+            for &l in itm.iter() {
+                let b = l > 0;
+                let v = l.unsigned_abs() as usize;
+                if v == 0 {
+                    continue;
+                }
+                // DIMACS vars are 1-indexed; `LogicalExpr::Literal` is also 1-indexed here.
+                lit_vec.push(LogicalExpr::Literal(v, b));
             }
             if lit_vec.len() == 1 {
                 clause_vec.push(lit_vec.pop().unwrap());
@@ -87,7 +81,7 @@ impl LogicalExpr {
     /// // this string represents X XOR Y. it exercises each branch of the match statement
     /// // within the from_sexpr helper
     /// let x_xor_y = String::from("(And (Or (Var X) (Var Y)) (Or (Not (Var X)) (Not (Var Y))))");
-    /// let expr = serde_sexpr::from_str::<LogicalSExpr>(&x_xor_y).unwrap();
+    /// let expr = serde_lexpr::from_str::<LogicalSExpr>(&x_xor_y).unwrap();
     ///
     /// let manually_constructed = LogicalExpr::And(
     ///     Box::new(LogicalExpr::Or(
@@ -270,7 +264,7 @@ fn from_sexpr_e2e_primitive() {
     // this string represents X XOR Y. it exercises each branch of the match statement
     // within the from_sexpr helper
     let x_xor_y = String::from("(And (Or (Var X) (Var Y)) (Or (Not (Var X)) (Not (Var Y))))");
-    let expr = serde_sexpr::from_str::<LogicalSExpr>(&x_xor_y).unwrap();
+    let expr = serde_lexpr::from_str::<LogicalSExpr>(&x_xor_y).unwrap();
 
     let manually_constructed = LogicalExpr::And(
         Box::new(LogicalExpr::Or(
@@ -291,7 +285,7 @@ fn from_sexpr_e2e_complex() {
     // this string uses the "complex" non-primitive s-expr items: IFF, XOR, ITE
     let x_xor_y =
         String::from("(Xor (Iff (Var X) (Var Y)) (Ite (Var Z) (Not (Var X)) (Not (Var Y))))");
-    let expr = serde_sexpr::from_str::<LogicalSExpr>(&x_xor_y).unwrap();
+    let expr = serde_lexpr::from_str::<LogicalSExpr>(&x_xor_y).unwrap();
 
     let manually_constructed = LogicalExpr::Xor(
         Box::new(LogicalExpr::Iff(

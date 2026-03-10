@@ -295,27 +295,18 @@ impl Cnf {
     }
 
     pub fn from_dimacs(input: &str) -> Cnf {
-        use dimacs::*;
-        let (_, cvec) = match parse_dimacs(input).unwrap() {
-            Instance::Cnf { num_vars, clauses } => (num_vars, clauses),
-            Instance::Sat {
-                num_vars: _,
-                extensions: _,
-                formula: _,
-            } => panic!("Received (valid) SAT input, not CNF"),
-        };
         let mut clause_vec: Vec<Vec<Literal>> = Vec::new();
-        let mut m = 0;
-        for itm in cvec.iter() {
+        let parsed = super::parse_dimacs_cnf(input).expect("failed to parse DIMACS CNF");
+        for itm in parsed.clauses.iter() {
             let mut lit_vec: Vec<Literal> = Vec::new();
-            for l in itm.lits().iter() {
-                let b = match l.sign() {
-                    Sign::Neg => false,
-                    Sign::Pos => true,
-                };
-                // subtract 1, we are 0-indexed
-                let lbl = VarLabel::new(l.var().to_u64() - 1);
-                m = max(l.var().to_u64() as usize, m);
+            for &l in itm.iter() {
+                let b = l > 0;
+                let v = l.unsigned_abs() as u64;
+                if v == 0 {
+                    continue;
+                }
+                // DIMACS vars are 1-indexed; our VarLabel is 0-indexed.
+                let lbl = VarLabel::new(v - 1);
                 lit_vec.push(Literal::new(lbl, b));
             }
             clause_vec.push(lit_vec);

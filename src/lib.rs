@@ -1,5 +1,4 @@
 //! Defines exports and the C api
-extern crate dimacs;
 extern crate pretty;
 extern crate primal;
 extern crate rand;
