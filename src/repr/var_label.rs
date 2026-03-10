@@ -1,5 +1,6 @@
 //! A generic data structure for tracking variable labels throughout the library
 use bit_set::BitSet;
+#[cfg(feature = "quickcheck")]
 use quickcheck::{Arbitrary, Gen};
 use serde::Serialize;
 use std::fmt::{self, Display};
@@ -124,6 +125,7 @@ impl fmt::Debug for Literal {
     }
 }
 
+#[cfg(feature = "quickcheck")]
 impl Arbitrary for Literal {
     fn arbitrary(g: &mut Gen) -> Literal {
         let varlbl = u64::arbitrary(g) % 16;

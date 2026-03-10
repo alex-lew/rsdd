@@ -10,6 +10,7 @@ use crate::{
 };
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::UnGraph;
+#[cfg(feature = "quickcheck")]
 use quickcheck::{Arbitrary, Gen};
 use rand::{self, rngs::ThreadRng, Rng};
 use std::{
@@ -659,6 +660,7 @@ impl Cnf {
     }
 }
 
+#[cfg(feature = "quickcheck")]
 impl Arbitrary for Cnf {
     /// generate an arbitrary CNF with at most 9 variables and at most 16 clauses
     fn arbitrary(g: &mut Gen) -> Cnf {
