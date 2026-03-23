@@ -656,3 +656,50 @@ pub unsafe extern "C" fn free_dual_number(ptr: *mut DualNumber) {
         drop(Box::from_raw(ptr));
     }
 }
+
+#[repr(C)]
+pub struct VarArray {
+    data: *mut u64,
+    len: usize,
+}
+
+/// Collects all variable labels appearing in a BDD, returned as a heap-allocated array.
+/// The caller must free the array with `free_var_array`.
+#[no_mangle]
+pub unsafe extern "C" fn bdd_get_vars(bdd: *mut BddPtr<'static>) -> VarArray {
+    let bdd = *bdd;
+    debug_assert!(bdd.is_scratch_cleared());
+
+    fn collect_h(ptr: BddPtr, vars: &mut Vec<u64>) {
+        if ptr.is_const() {
+            return;
+        }
+        match ptr.scratch::<usize>() {
+            Some(_) => (),
+            None => {
+                if let Some(v) = ptr.var_safe() {
+                    vars.push(v.value());
+                }
+                ptr.set_scratch::<usize>(0);
+                collect_h(ptr.low_raw(), vars);
+                collect_h(ptr.high_raw(), vars);
+            }
+        }
+    }
+
+    let mut vars = Vec::new();
+    collect_h(bdd, &mut vars);
+    bdd.clear_scratch();
+
+    let len = vars.len();
+    let data = vars.as_mut_ptr();
+    std::mem::forget(vars);
+    VarArray { data, len }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_var_array(arr: VarArray) {
+    if !arr.data.is_null() && arr.len > 0 {
+        let _ = Vec::from_raw_parts(arr.data, arr.len, arr.len);
+    }
+}
