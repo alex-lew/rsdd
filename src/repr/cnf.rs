@@ -10,6 +10,7 @@ use crate::{
 };
 use petgraph::graph::NodeIndex;
 use petgraph::prelude::UnGraph;
+#[cfg(feature = "quickcheck")]
 use quickcheck::{Arbitrary, Gen};
 use rand::{self, rngs::ThreadRng, Rng};
 use std::{
@@ -482,7 +483,7 @@ impl Cnf {
                     .enumerate()
                     .fold(T::one(), |v, (idx, &polarity)| {
                         let (loww, highw) = weight_vec[idx];
-                        v.mul(if polarity { *highw } else { *loww })
+                        v.mul(if polarity { highw.clone() } else { loww.clone() })
                     });
                 total = total + assgn_w;
             }
@@ -659,6 +660,7 @@ impl Cnf {
     }
 }
 
+#[cfg(feature = "quickcheck")]
 impl Arbitrary for Cnf {
     /// generate an arbitrary CNF with at most 9 variables and at most 16 clauses
     fn arbitrary(g: &mut Gen) -> Cnf {

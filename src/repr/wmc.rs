@@ -22,15 +22,15 @@ impl<T: Semiring> WmcParams<T> {
     /// ```
     /// use rsdd::repr::{Literal, VarLabel};
     /// use rsdd::repr::WmcParams;
-    /// use rsdd::util::semirings::{Semiring, RealSemiring};
+    /// use rsdd::util::semirings::{Semiring, DualNumber};
     /// use std::collections::HashMap;
     ///
     /// let weights = HashMap::from([
-    ///     (VarLabel::new(0), (RealSemiring(0.0), RealSemiring(1.0))),
-    ///     (VarLabel::new(1), (RealSemiring(0.3), RealSemiring(0.7)))
+    ///     (VarLabel::new(0), (DualNumber(0.0, vec![-1.0, 0.0, 0.0]), DualNumber(1.0, vec![1.0, 0.0, 0.0]))),
+    ///     (VarLabel::new(1), (DualNumber(0.3, vec![0.0, -1.0, 0.0]), DualNumber(0.7, vec![0.0, 1.0, 0.0])))
     /// ]);
     ///
-    /// let params = WmcParams::<RealSemiring>::new(weights);
+    /// let params = WmcParams::<DualNumber>::new(weights);
     ///
     /// let all_true = [
     ///     Literal::new(VarLabel::new(0), true),
@@ -42,7 +42,7 @@ impl<T: Semiring> WmcParams<T> {
     pub fn new(var_to_val: HashMap<VarLabel, (T, T)>) -> WmcParams<T> {
         let mut var_to_val_vec: Vec<Option<(T, T)>> = vec![None; var_to_val.len()];
         for (key, value) in var_to_val.iter() {
-            var_to_val_vec[key.value_usize()] = Some(*value);
+            var_to_val_vec[key.value_usize()] = Some(value.clone());
         }
         WmcParams {
             zero: T::zero(),
@@ -55,15 +55,15 @@ impl<T: Semiring> WmcParams<T> {
     /// ```
     /// use rsdd::repr::{Literal, VarLabel};
     /// use rsdd::repr::WmcParams;
-    /// use rsdd::util::semirings::{Semiring, RealSemiring};
+    /// use rsdd::util::semirings::{Semiring, DualNumber};
     /// use std::collections::HashMap;
     ///
     /// let weights = HashMap::from([
-    ///     (VarLabel::new(0), (RealSemiring(0.0), RealSemiring(1.0))),
-    ///     (VarLabel::new(1), (RealSemiring(0.3), RealSemiring(0.7)))
+    ///     (VarLabel::new(0), (DualNumber(0.0, vec![-1.0, 0.0, 0.0]), DualNumber(1.0, vec![1.0, 0.0, 0.0]))),
+    ///     (VarLabel::new(1), (DualNumber(0.3, vec![0.0, -1.0, 0.0]), DualNumber(0.7, vec![0.0, 1.0, 0.0])))
     /// ]);
     ///
-    /// let params = WmcParams::<RealSemiring>::new(weights);
+    /// let params = WmcParams::<DualNumber>::new(weights);
     ///
     /// let all_true = [
     ///     Literal::new(VarLabel::new(0), true),
@@ -73,12 +73,12 @@ impl<T: Semiring> WmcParams<T> {
     /// assert_eq!(params.assignment_weight(&all_true).0, 0.7)
     /// ```
     pub fn assignment_weight(&self, assgn: &[Literal]) -> T {
-        let mut prod = self.one;
+        let mut prod = self.one.clone();
         for lit in assgn.iter() {
             if lit.polarity() {
-                prod = prod * self.var_to_val[lit.label().value_usize()].unwrap().1
+                prod = prod * self.var_to_val[lit.label().value_usize()].clone().unwrap().1
             } else {
-                prod = prod * self.var_to_val[lit.label().value_usize()].unwrap().0
+                prod = prod * self.var_to_val[lit.label().value_usize()].clone().unwrap().0
             }
         }
         prod
@@ -87,15 +87,15 @@ impl<T: Semiring> WmcParams<T> {
     /// ```
     /// use rsdd::repr::{Literal, VarLabel};
     /// use rsdd::repr::WmcParams;
-    /// use rsdd::util::semirings::{Semiring, RealSemiring};
+    /// use rsdd::util::semirings::{Semiring, DualNumber};
     /// use std::collections::HashMap;
     ///
     /// let weights = HashMap::from([
-    ///     (VarLabel::new(0), (RealSemiring(0.0), RealSemiring(1.0))),
-    ///     (VarLabel::new(1), (RealSemiring(0.3), RealSemiring(0.7)))
+    ///     (VarLabel::new(0), (DualNumber(0.0, vec![-1.0, 0.0, 0.0]), DualNumber(1.0, vec![1.0, 0.0, 0.0]))),
+    ///     (VarLabel::new(1), (DualNumber(0.3, vec![0.0, -1.0, 0.0]), DualNumber(0.7, vec![0.0, 1.0, 0.0])))
     /// ]);
     ///
-    /// let mut params = WmcParams::<RealSemiring>::new(weights);
+    /// let mut params = WmcParams::<DualNumber>::new(weights);
     ///
     /// let all_true = [
     ///     Literal::new(VarLabel::new(0), true),
@@ -104,7 +104,7 @@ impl<T: Semiring> WmcParams<T> {
     ///
     /// assert_eq!(params.assignment_weight(&all_true).0, 0.7);
     ///
-    /// params.set_weight(VarLabel::new(1), RealSemiring(0.5), RealSemiring(0.5));
+    /// params.set_weight(VarLabel::new(1), DualNumber(0.5, vec![0.0, -1.0, 0.0]), DualNumber(0.5, vec![0.0, 1.0, 0.0]));
     /// assert_eq!(params.assignment_weight(&all_true).0, 0.5);
     /// ```
     pub fn set_weight(&mut self, lbl: VarLabel, low: T, high: T) {
@@ -118,20 +118,23 @@ impl<T: Semiring> WmcParams<T> {
     /// ```
     /// use rsdd::repr::VarLabel;
     /// use rsdd::repr::WmcParams;
-    /// use rsdd::util::semirings::{Semiring, RealSemiring};
+    /// use rsdd::util::semirings::{Semiring, DualNumber};
     /// use std::collections::HashMap;
     ///
     /// let weights = HashMap::from([
-    ///     (VarLabel::new(0), (RealSemiring(0.0), RealSemiring(1.0))),
-    ///     (VarLabel::new(1), (RealSemiring(0.3), RealSemiring(0.7)))
+    ///     (VarLabel::new(0), (DualNumber(0.0, vec![-1.0, 0.0, 0.0, 0.0]), DualNumber(1.0, vec![1.0, 0.0, 0.0, 0.0]))),
+    ///     (VarLabel::new(1), (DualNumber(0.3, vec![0.0, -1.0, 0.0, 0.0]), DualNumber(0.7, vec![0.0, 1.0, 0.0, 0.0] )))
     /// ]);
     ///
-    /// let params = WmcParams::<RealSemiring>::new(weights);
+    /// let params = WmcParams::<DualNumber>::new(weights);
     ///
-    /// assert_eq!(*params.var_weight(VarLabel::new(1)), (RealSemiring(0.3), RealSemiring(0.7)))
+    /// assert_eq!(*params.var_weight(VarLabel::new(1)), (DualNumber(0.3, vec![0.0, -1.0, 0.0, 0.0]), DualNumber(0.7, vec![0.0, 1.0, 0.0, 0.0])))
     /// ```
     // gives you the weight of `(low, high)` literals for a given VarLabel
     pub fn var_weight(&self, label: VarLabel) -> &(T, T) {
+        if self.var_to_val.is_empty() {
+            panic!("var_to_val has not been initialized");
+        }
         return (self.var_to_val[label.value_usize()]).as_ref().unwrap();
     }
 }

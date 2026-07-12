@@ -15,6 +15,7 @@ use std::{
     any::Any,
     cell::RefCell,
     collections::HashMap,
+    collections::HashSet,
     hash::{Hash, Hasher},
     iter::FromIterator,
     ptr,
@@ -202,7 +203,7 @@ impl<'a> BddPtr<'a> {
     /// assert_eq!(BddPtr::Reg(&node), BddPtr::Compl(&node).to_reg());
     /// assert_eq!(BddPtr::Reg(&node), BddPtr::Reg(&node).to_reg());
     /// ```
-    pub fn to_reg(&self) -> BddPtr {
+    pub fn to_reg(&self) -> BddPtr<'a> {
         match &self {
             Compl(x) => Reg(x),
             Reg(x) => Reg(x),
@@ -274,6 +275,48 @@ impl<'a> BddPtr<'a> {
             Compl(x) => x.high,
             Reg(x) => x.high,
             PtrTrue | PtrFalse => panic!("deref constant BDD"),
+        }
+    }
+
+    /// Unsmoothed WMC with an external memo table keyed by (node address,
+    /// complement bit). Unlike [`DDNNFPtr::unsmoothed_wmc`], whose per-node
+    /// scratch cache is cleared after every call, the caller-owned memo lets
+    /// repeated counts over overlapping BDDs from one manager share work
+    /// across calls. Sound as long as the weights of already-visited
+    /// variables in `params` are unchanged between calls (weights for
+    /// variables minted *after* a call only appear in new nodes).
+    pub fn unsmoothed_wmc_memo<T>(
+        &self,
+        params: &WmcParams<T>,
+        memo: &mut HashMap<(usize, bool), T>,
+    ) -> T
+    where
+        T: crate::util::semirings::Semiring
+            + std::ops::Add<Output = T>
+            + std::ops::Mul<Output = T>
+            + 'static,
+    {
+        match self {
+            PtrTrue => params.one.clone(),
+            PtrFalse => params.zero.clone(),
+            Compl(node) | Reg(node) => {
+                let key = (*node as *const BddNode as usize, self.is_neg());
+                if let Some(v) = memo.get(&key) {
+                    return v.clone();
+                }
+                // mirror `fold`: a complemented edge negates both children
+                let (l, h) = if self.is_neg() {
+                    (self.low_raw().neg(), self.high_raw().neg())
+                } else {
+                    (self.low_raw(), self.high_raw())
+                };
+                let low_v = l.unsmoothed_wmc_memo(params, memo);
+                let high_v = h.unsmoothed_wmc_memo(params, memo);
+                let (low_w, high_w) = params.var_weight(node.var);
+                let v = low_w.clone() * low_v + high_w.clone() * high_v;
+                memo.insert(key, v.clone());
+                v
+            }
         }
     }
 
@@ -497,7 +540,7 @@ impl<'a> BddPtr<'a> {
         self.print_bdd_lbl(&HashMap::new())
     }
 
-    fn bdd_fold_h<T: Clone + Copy + Debug, F: Fn(VarLabel, T, T) -> T>(
+    fn bdd_fold_h<T: Clone + Debug, F: Fn(VarLabel, T, T) -> T>(
         &self,
         f: &F,
         low_v: T,
@@ -518,15 +561,15 @@ impl<'a> BddPtr<'a> {
 
                 let fold_helper = |prev_low, prev_high| {
                     // Standard fold stuff
-                    let l = self.low().bdd_fold_h(f, low_v, high_v);
+                    let l = self.low().bdd_fold_h(f, low_v.clone(), high_v.clone());
                     let h = self.high().bdd_fold_h(f, low_v, high_v);
                     let res = f(node.var, l, h);
                     // Set cache (accumulator)
                     // Then corrects scratch so it traverses correctly in a recursive case downstream
                     if self.is_neg() {
-                        self.set_scratch::<(Option<T>, Option<T>)>((Some(res), prev_high));
+                        self.set_scratch::<(Option<T>, Option<T>)>((Some(res.clone()), prev_high));
                     } else {
-                        self.set_scratch::<(Option<T>, Option<T>)>((prev_low, Some(res)));
+                        self.set_scratch::<(Option<T>, Option<T>)>((prev_low, Some(res.clone())));
                     }
                     res
                 };
@@ -545,7 +588,7 @@ impl<'a> BddPtr<'a> {
         }
     }
 
-    pub fn bdd_fold<T: Clone + Copy + Debug, F: Fn(VarLabel, T, T) -> T>(
+    pub fn bdd_fold<T: Clone + Debug, F: Fn(VarLabel, T, T) -> T>(
         &self,
         f: &F,
         low_v: T,
@@ -806,9 +849,9 @@ impl<'a> BddPtr<'a> {
         for lit in partial_join_assgn.assignment_iter() {
             let (l, h) = wmc.var_weight(lit.label());
             if lit.polarity() {
-                partial_join_acc = partial_join_acc * (*h);
+                partial_join_acc = partial_join_acc * h.clone();
             } else {
-                partial_join_acc = partial_join_acc * (*l);
+                partial_join_acc = partial_join_acc * l.clone();
             }
         }
         // top-down UB calculation via bdd_fold
@@ -822,12 +865,12 @@ impl<'a> BddPtr<'a> {
                     None => {
                         // If it's a join variable, (w_l * low) ∨ (w_h * high)
                         if join_vars.contains(varlabel.value_usize()) {
-                            let lhs = *w_l * low;
-                            let rhs = *w_h * high;
+                            let lhs = w_l.clone() * low;
+                            let rhs = w_h.clone() * high;
                             JoinSemilattice::join(&lhs, &rhs)
                         // Otherwise it is a sum variables, so
                         } else {
-                            (*w_l * low) + (*w_h * high)
+                            (w_l.clone() * low) + (w_h.clone() * high)
                         }
                     }
                     // If our node has already been assigned, then we
@@ -836,8 +879,8 @@ impl<'a> BddPtr<'a> {
                     Some(false) => low,
                 }
             },
-            wmc.zero,
-            wmc.one,
+            wmc.zero.clone(),
+            wmc.one.clone(),
         );
         partial_join_acc * v
     }
@@ -870,7 +913,7 @@ impl<'a> BddPtr<'a> {
             // If there exists an unassigned decision variable,
             [x, end @ ..] => {
                 let mut best_model = cur_best.clone();
-                let mut best_lb = cur_lb;
+                let mut best_lb = cur_lb.clone();
                 let join_vars_bits = BitSet::from_iter(end.iter().map(|x| x.value_usize()));
                 // Consider the assignment of it to true...
                 let mut true_model = cur_assgn.clone();
@@ -899,7 +942,7 @@ impl<'a> BddPtr<'a> {
                         if new_lb == rec {
                             (best_lb, best_model) = (rec, rec_pm);
                         } else {
-                            (best_lb, best_model) = (cur_lb, cur_best.clone());
+                            (best_lb, best_model) = (cur_lb.clone(), cur_best.clone());
                         }
                     }
                 }
@@ -982,12 +1025,12 @@ impl<'a> DDNNFPtr<'a> for BddPtr<'a> {
         }
     }
 
-    fn fold<T: Clone + Copy + Debug, F: Fn(DDNNF<T>) -> T>(&self, f: F) -> T
+    fn fold<T: Clone + Debug, F: Fn(DDNNF<T>) -> T>(&self, f: F) -> T
     where
         T: 'static,
     {
         debug_assert!(self.is_scratch_cleared());
-        fn bottomup_pass_h<T: Clone + Copy + Debug, F: Fn(DDNNF<T>) -> T>(ptr: BddPtr, f: &F) -> T
+        fn bottomup_pass_h<T: Clone + Debug, F: Fn(DDNNF<T>) -> T>(ptr: BddPtr, f: &F) -> T
         where
             T: 'static,
         {
@@ -1024,9 +1067,9 @@ impl<'a> DDNNFPtr<'a> for BddPtr<'a> {
 
                         // cache and return or_v
                         if ptr.is_neg() {
-                            ptr.set_scratch::<DDNNFCache<T>>((Some(or_v), cached));
+                            ptr.set_scratch::<DDNNFCache<T>>((Some(or_v.clone()), cached));
                         } else {
-                            ptr.set_scratch::<DDNNFCache<T>>((cached, Some(or_v)));
+                            ptr.set_scratch::<DDNNFCache<T>>((cached, Some(or_v.clone())));
                         }
                         or_v
                     };
@@ -1186,5 +1229,70 @@ impl<'a> Ord for BddNode<'a> {
             ord => return ord, // observe: this is not equal!
         }
         core::cmp::Ordering::Equal
+    }
+}
+
+
+impl<'a> BddPtr<'a> {
+
+    /// deep copies the BDD in a way that separates it from the ROBDD table.
+    /// Note this will leak memory unless you manually call `free_deep_copy` on the result.
+    pub fn deep_copy<'b>(&self) -> BddPtr<'b> {
+        let mut memo: HashMap<*const BddNode<'a>, &'b BddNode<'b>> = HashMap::new();
+        self.deep_copy_with_memo(&mut memo)
+    }
+    
+    fn deep_copy_with_memo<'b>(&self, memo: &mut HashMap<*const BddNode<'a>, &'b BddNode<'b>>) -> BddPtr<'b> {
+        match self {
+            BddPtr::PtrTrue => BddPtr::PtrTrue,
+            BddPtr::PtrFalse => BddPtr::PtrFalse,
+            BddPtr::Compl(node) => {
+                let new_node = Self::copy_node_with_memo(node, memo);
+                BddPtr::Compl(new_node)
+            }
+            BddPtr::Reg(node) => {
+                let new_node = Self::copy_node_with_memo(node, memo);
+                BddPtr::Reg(new_node)
+            }
+        }
+    }
+    
+    fn copy_node_with_memo<'b>(node: &BddNode<'a>, memo: &mut HashMap<*const BddNode<'a>, &'b BddNode<'b>>) -> &'b BddNode<'b> {
+        let node_ptr = node as *const BddNode<'a>;
+        if let Some(&existing) = memo.get(&node_ptr) {
+            return existing;
+        }
+        
+        let new_node = Box::leak(Box::new(BddNode {
+            var: node.var,
+            low: node.low.deep_copy_with_memo(memo),
+            high: node.high.deep_copy_with_memo(memo),
+            data: RefCell::new(None), // Reset scratch space
+            semantic_hash: RefCell::new(None), // Reset cache
+        }));
+        
+        memo.insert(node_ptr, new_node);
+        new_node
+    }
+
+    /// frees the deep copy of the BDD
+    pub unsafe fn free_deep_copy(&self) {
+        let mut visited: HashSet<*const BddNode<'a>> = HashSet::new();
+        self.free_with_visited(&mut visited);
+    }
+    
+    unsafe fn free_with_visited(&self, visited: &mut HashSet<*const BddNode<'a>>) {
+        match self {
+            BddPtr::PtrTrue | BddPtr::PtrFalse => {}
+            BddPtr::Compl(node) | BddPtr::Reg(node) => {
+                let node_ptr = *node as *const BddNode<'a>;
+                if visited.insert(node_ptr) { // Only free if not already visited
+                    node.low.free_with_visited(visited);
+                    node.high.free_with_visited(visited);
+                    // Convert back to Box and drop it
+                    let _ = Box::from_raw(node_ptr as *mut BddNode<'a>);
+                }
+            }
+        }
     }
 }

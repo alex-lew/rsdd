@@ -8,8 +8,9 @@ use crate::{
     },
     util::btree::{BTree, LeastCommonAncestor},
 };
+#[cfg(feature = "quickcheck")]
 use quickcheck::{Arbitrary, Gen};
-use rand::{rngs::SmallRng, seq::SliceRandom, Rng, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha8Rng;
 use std::collections::HashSet;
 
@@ -255,6 +256,7 @@ impl VTree {
     }
 }
 
+#[cfg(feature = "quickcheck")]
 impl Arbitrary for VTree {
     /// generate an arbitrary vtree on 16 variables
     fn arbitrary(g: &mut Gen) -> VTree {

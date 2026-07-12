@@ -3,7 +3,7 @@ use std::{collections::HashMap, ffi::CStr};
 
 use crate::builder::bdd::BddBuilder;
 use crate::repr::DDNNFPtr;
-use crate::util::semirings::{RealSemiring, Semiring};
+use crate::util::semirings::{RealSemiring, DualNumber, Semiring};
 use crate::{
     builder::{bdd::RobddBuilder, cache::AllIteTable, BottomUpBuilder},
     constants::primes,
@@ -33,6 +33,11 @@ pub struct WeightedSampleResult {
     sample: *mut BddPtr<'static>,
     probability: f64,
 }
+
+// Updated WMCDual to include size
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct WMCDual(pub f64, pub *const f64, pub usize);
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
@@ -98,7 +103,7 @@ pub unsafe extern "C" fn robdd_builder_all_table(order: *mut VarOrder) -> *mut R
     }
 
     let order = *Box::from_raw(order);
-    Box::into_raw(Box::new(RobddBuilder::<AllIteTable<BddPtr>>::new(order, None))).cast()
+    Box::into_raw(Box::new(RobddBuilder::<AllIteTable<BddPtr>>::new(order))).cast()
 }
 
 #[no_mangle]
@@ -143,7 +148,7 @@ pub unsafe extern "C" fn robdd_model_count(
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn mk_bdd_manager_default_order(num_vars: u64) -> *mut RsddBddBuilder {
     Box::into_raw(Box::new(RobddBuilder::<AllIteTable<BddPtr>>::new(
-        VarOrder::linear_order(num_vars as usize), None
+        VarOrder::linear_order(num_vars as usize)
     )))
     .cast()
 }
@@ -158,9 +163,23 @@ pub unsafe extern "C" fn start_bdd_manager_time_limit(builder: *mut RsddBddBuild
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn start_bdd_manager_ite_limit(builder: *mut RsddBddBuilder, ite_limit: usize) {
+    let builder = robdd_builder_from_ptr(builder);
+    builder.start_ite_limit(ite_limit);
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn stop_bdd_manager_time_limit(builder: *mut RsddBddBuilder) {
     let builder = robdd_builder_from_ptr(builder);
     builder.stop_time_limit();
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn stop_bdd_manager_ite_limit(builder: *mut RsddBddBuilder) {
+    let builder = robdd_builder_from_ptr(builder);
+    builder.stop_ite_limit();
 }
 
 #[no_mangle]
@@ -170,6 +189,12 @@ pub unsafe extern "C" fn bdd_manager_time_limit_exceeded(builder: *mut RsddBddBu
     builder.check_time_limit()
 }
 
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_manager_ite_limit_exceeded(builder: *mut RsddBddBuilder) -> bool {
+    let builder = robdd_builder_from_ptr(builder);
+    builder.check_ite_limit()
+}
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
@@ -367,6 +392,19 @@ pub unsafe extern "C" fn bdd_num_recursive_calls(builder: *mut RsddBddBuilder) -
 
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_deep_copy(bdd: *mut BddPtr<'static>) -> *mut BddPtr<'static> {
+    let bdd = (*bdd).deep_copy();
+    Box::into_raw(Box::new(bdd))
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_free_deep_copy(bdd: *mut BddPtr<'static>) {
+    (*bdd).free_deep_copy();
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_wmc(
     bdd: *mut BddPtr<'static>,
     wmc: *mut WmcParams<RealSemiring>,
@@ -374,11 +412,38 @@ pub unsafe extern "C" fn bdd_wmc(
     DDNNFPtr::unsmoothed_wmc(&(*bdd), &(*wmc)).0
 }
 
+// Updated to return size with the vector
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn bdd_wmc_dual(
+    bdd: *mut BddPtr<'static>,
+    wmc: *mut WmcParams<DualNumber>,
+) -> WMCDual {
+    let result = DDNNFPtr::unsmoothed_wmc(&(*bdd), &(*wmc));
+
+    // Get the vector size
+    let size = result.1.len();
+    
+    // Create a heap-allocated copy of the vector
+    let deriv = result.1.clone();
+    let deriv_ptr = deriv.as_ptr();
+    std::mem::forget(deriv); // Prevent deallocation
+    
+    WMCDual(result.0, deriv_ptr, size)
+}
+
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn new_wmc_params_f64() -> *mut WmcParams<RealSemiring> {
     Box::into_raw(Box::new(WmcParams::new(HashMap::from([]))))
 }
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn new_wmc_params_f64_dual() -> *mut WmcParams<DualNumber> {
+    Box::into_raw(Box::new(WmcParams::new(HashMap::from([]))))
+}
+
 #[no_mangle]
 #[allow(clippy::missing_safety_doc)]
 pub unsafe extern "C" fn bdd_compose(
@@ -415,6 +480,34 @@ pub unsafe extern "C" fn wmc_param_f64_set_weight(
     (*weights).set_weight(VarLabel::new(var), RealSemiring(low), RealSemiring(high))
 }
 
+// Updated to handle dynamic-sized vectors
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn wmc_param_f64_set_weight_deriv_dual(
+    weights: *mut WmcParams<DualNumber>,
+    var: u64,
+    low: f64,
+    low_deriv_ptr: *const f64,
+    low_size: usize,
+    high: f64,
+    high_deriv_ptr: *const f64,
+    high_size: usize
+) {
+    // Create slices from the provided pointers and sizes
+    let low_deriv = std::slice::from_raw_parts(low_deriv_ptr, low_size);
+    let high_deriv = std::slice::from_raw_parts(high_deriv_ptr, high_size);
+    
+    // Convert to Vec<f64>
+    let low_deriv_vec = low_deriv.to_vec();
+    let high_deriv_vec = high_deriv.to_vec();
+
+    (*weights).set_weight(
+        VarLabel::new(var),
+        DualNumber(low, low_deriv_vec),
+        DualNumber(high, high_deriv_vec)
+    )
+}
+
 #[repr(C)]
 #[derive(Clone, Copy)]
 pub struct WeightF64(pub f64, pub f64);
@@ -427,6 +520,28 @@ pub unsafe extern "C" fn wmc_param_f64_var_weight(
 ) -> WeightF64 {
     let (l, h) = (*weights).var_weight(VarLabel::new(var));
     WeightF64(l.0, h.0)
+}
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn wmc_param_f64_var_weight_dual(
+    weights: *mut WmcParams<DualNumber>,
+    var: u64,
+) -> WeightF64 {
+    let (l, h) = (*weights).var_weight(VarLabel::new(var));
+    WeightF64(l.0, h.0)
+}
+
+
+#[no_mangle]
+#[allow(clippy::missing_safety_doc)]
+pub unsafe extern "C" fn wmc_param_f64_var_partial(
+    partials: *const f64,
+    metaparam: usize,
+    size: usize,
+) -> f64 {
+    assert!(metaparam < size);
+    *partials.add(metaparam) // this is pointer arithmetic
 }
 
 #[no_mangle]
@@ -480,6 +595,31 @@ pub unsafe extern "C" fn bdd_hash(bdd: *mut BddPtr<'static>) -> u64 {
     hasher.finish()
 }
 
+// Add a new function to get the vector size from a DualNumber
+#[no_mangle]
+pub unsafe extern "C" fn dual_number_get_size(dual: *const DualNumber) -> usize {
+    if !dual.is_null() {
+        (*dual).1.len()
+    } else {
+        0
+    }
+}
+
+// Add a helper function to create a default-sized DualNumber
+#[no_mangle]
+pub unsafe extern "C" fn dual_number_create(value: f64, size: usize) -> *mut DualNumber {
+    Box::into_raw(Box::new(DualNumber(value, vec![0.0; size])))
+}
+
+// Add a function to free the memory allocated for derivative vectors
+#[no_mangle]
+pub unsafe extern "C" fn free_wmc_dual_derivatives(ptr: *mut f64, size: usize) {
+    if !ptr.is_null() {
+        // Reconstruct the Vec and drop it to free memory
+        let _ = Vec::from_raw_parts(ptr as *mut f64, size, size);
+    }
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn free_bdd(bdd: *mut BddPtr<'static>) {
     if !bdd.is_null() {
@@ -500,5 +640,19 @@ pub unsafe extern "C" fn free_bdd_manager(manager: *mut RsddBddBuilder) {
 pub unsafe extern "C" fn free_wmc_params(params: *mut WmcParams<RealSemiring>) {
     if !params.is_null() {
         drop(Box::from_raw(params));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_wmc_params_dual(params: *mut WmcParams<DualNumber>) {
+    if !params.is_null() {
+        drop(Box::from_raw(params));
+    }
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn free_dual_number(ptr: *mut DualNumber) {
+    if !ptr.is_null() {
+        drop(Box::from_raw(ptr));
     }
 }
