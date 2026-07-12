@@ -278,6 +278,48 @@ impl<'a> BddPtr<'a> {
         }
     }
 
+    /// Unsmoothed WMC with an external memo table keyed by (node address,
+    /// complement bit). Unlike [`DDNNFPtr::unsmoothed_wmc`], whose per-node
+    /// scratch cache is cleared after every call, the caller-owned memo lets
+    /// repeated counts over overlapping BDDs from one manager share work
+    /// across calls. Sound as long as the weights of already-visited
+    /// variables in `params` are unchanged between calls (weights for
+    /// variables minted *after* a call only appear in new nodes).
+    pub fn unsmoothed_wmc_memo<T>(
+        &self,
+        params: &WmcParams<T>,
+        memo: &mut HashMap<(usize, bool), T>,
+    ) -> T
+    where
+        T: crate::util::semirings::Semiring
+            + std::ops::Add<Output = T>
+            + std::ops::Mul<Output = T>
+            + 'static,
+    {
+        match self {
+            PtrTrue => params.one.clone(),
+            PtrFalse => params.zero.clone(),
+            Compl(node) | Reg(node) => {
+                let key = (*node as *const BddNode as usize, self.is_neg());
+                if let Some(v) = memo.get(&key) {
+                    return v.clone();
+                }
+                // mirror `fold`: a complemented edge negates both children
+                let (l, h) = if self.is_neg() {
+                    (self.low_raw().neg(), self.high_raw().neg())
+                } else {
+                    (self.low_raw(), self.high_raw())
+                };
+                let low_v = l.unsmoothed_wmc_memo(params, memo);
+                let high_v = h.unsmoothed_wmc_memo(params, memo);
+                let (low_w, high_w) = params.var_weight(node.var);
+                let v = low_w.clone() * low_v + high_w.clone() * high_v;
+                memo.insert(key, v.clone());
+                v
+            }
+        }
+    }
+
     /// ```
     /// use rsdd::repr::{
     ///     BddNode, BddPtr,
